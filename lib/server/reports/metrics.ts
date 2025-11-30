@@ -40,7 +40,7 @@ export async function getArcadeSales(reportId: string): Promise<ArcadeSalesData[
 
   const { data, error } = await supabase
     .from('metric_values')
-    .select('arcade_group_label, quantity')
+    .select('arcade_group_label, value')
     .eq('report_id', reportId)
     .not('arcade_group_label', 'is', null);
 
@@ -48,11 +48,11 @@ export async function getArcadeSales(reportId: string): Promise<ArcadeSalesData[
     throw new Error(`Failed to fetch arcade sales: ${error.message}`);
   }
 
-  // Group by arcade_group_label and sum quantities
+  // Group by arcade_group_label and sum values
   const grouped = new Map<string, number>();
   for (const row of data || []) {
     const label = row.arcade_group_label as string;
-    const qty = (row.quantity as number) || 0;
+    const qty = (row.value as number) || 0;
     grouped.set(label, (grouped.get(label) || 0) + qty);
   }
 
@@ -66,7 +66,7 @@ export async function getIndividualArcade(reportId: string): Promise<IndividualA
 
   const { data: metricData, error: metricError } = await supabase
     .from('metric_values')
-    .select('user_id, location_id, quantity')
+    .select('user_id, location_id, value')
     .eq('report_id', reportId)
     .not('arcade_group_label', 'is', null);
 
@@ -132,7 +132,7 @@ export async function getIndividualArcade(reportId: string): Promise<IndividualA
     
     const userName = user.name;
     const locationCode = locationMap.get(locationId) || '';
-    const qty = (row.quantity as number) || 0;
+    const qty = (row.value as number) || 0;
     
     const existing = grouped.get(userName);
     if (existing) {
@@ -152,7 +152,7 @@ export async function getLocationComboBreakdown(reportId: string): Promise<Locat
 
   const { data, error } = await supabase
     .from('metric_values')
-    .select('category, quantity')
+    .select('category, value')
     .eq('report_id', reportId)
     .in('category', ['combo', 'non_combo']);
 
@@ -165,7 +165,7 @@ export async function getLocationComboBreakdown(reportId: string): Promise<Locat
 
   for (const row of data || []) {
     const category = row.category as string;
-    const qty = (row.quantity as number) || 0;
+    const qty = (row.value as number) || 0;
 
     if (category === 'combo') {
       combo += qty;
@@ -185,7 +185,7 @@ export async function getLocationComboByVenue(reportId: string): Promise<Locatio
 
   const { data: metricData, error: metricError } = await supabase
     .from('metric_values')
-    .select('location_id, category, quantity')
+    .select('location_id, category, value')
     .eq('report_id', reportId)
     .in('category', ['combo', 'non_combo']);
 
@@ -231,7 +231,7 @@ export async function getLocationComboByVenue(reportId: string): Promise<Locatio
     if (!locationId) continue;
     
     const category = row.category as string;
-    const qty = (row.quantity as number) || 0;
+    const qty = (row.value as number) || 0;
 
     if (!locationDataMap.has(locationId)) {
       locationDataMap.set(locationId, { combo: 0, nonCombo: 0 });
@@ -275,7 +275,7 @@ export async function getIndividualComboPercent(reportId: string): Promise<Indiv
 
   const { data: metricData, error: metricError } = await supabase
     .from('metric_values')
-    .select('user_id, category, quantity')
+    .select('user_id, category, value')
     .eq('report_id', reportId)
     .in('category', ['combo', 'non_combo']);
 
@@ -318,7 +318,7 @@ export async function getIndividualComboPercent(reportId: string): Promise<Indiv
     if (!userId) continue;
     const userName = userMap.get(userId) || 'Unknown';
     const category = row.category as string;
-    const qty = (row.quantity as number) || 0;
+    const qty = (row.value as number) || 0;
 
     if (!userDataMap.has(userName)) {
       userDataMap.set(userName, { combo: 0, nonCombo: 0 });

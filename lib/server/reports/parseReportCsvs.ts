@@ -110,11 +110,11 @@ export async function parseReportCsvs(reportId: string) {
 
         // Ignore header row (check if first cell looks like a header)
         const firstValue = Object.values(row)[0]?.toLowerCase() || '';
-        if (firstValue.includes('staff') || firstValue.includes('product') || firstValue.includes('total')) {
+        if (firstValue.includes('staff') || firstValue.includes('product') || firstValue === 'name' || firstValue === 'self-serve' || firstValue === 'self serve') {
           return false;
         }
 
-        // Ignore rows containing "Self Serve"
+        // Ignore rows containing "Self Serve" in any cell
         const rowText = Object.values(row).join(' ').toLowerCase();
         if (rowText.includes('self serve') || rowText.includes('self-serve')) {
           return false;
@@ -125,13 +125,7 @@ export async function parseReportCsvs(reportId: string) {
           return false;
         }
 
-        // Ignore rows where "Total" column is blank or zero
-        const totalValue = row['Total'] || row['total'] || '';
-        const totalNum = parseFloat(totalValue);
-        if (!totalValue || totalNum === 0 || isNaN(totalNum)) {
-          return false;
-        }
-
+        // Don't filter by Total anymore - we'll check Volume In-Store later
         return true;
       });
 
@@ -144,7 +138,7 @@ export async function parseReportCsvs(reportId: string) {
       product_name: string;
       category: string;
       arcade_group_label: string | null;
-      quantity: number;
+      value: number; // Use 'value' column instead of 'quantity'
     }> = [];
 
     const staffNames = new Set<string>();
@@ -199,25 +193,56 @@ export async function parseReportCsvs(reportId: string) {
     }
 
     // STEP D: Build metric rows with staff assignment
+    let rowsProcessed = 0;
+    let rowsSkippedInvalidQuantity = 0;
+    let rowsSkippedNoStaff = 0;
+
     for (const row of cleanedRows) {
-      const firstCell = Object.values(row)[0] || '';
-      const firstCellLower = firstCell.toLowerCase().trim();
-      const matchingRule = productRuleMap.get(firstCellLower);
+      rowsProcessed++;
+
+      // Extract name from first column (handle various header names)
+      const name = row['Name'] ?? 
+                   row['Self-serve'] ?? 
+                   row['Self serve'] ?? 
+                   Object.values(row)[0] ?? 
+                   '';
+      
+      const nameTrimmed = name.trim();
+      const nameLower = nameTrimmed.toLowerCase();
+
+      // Skip header-like rows
+      if (nameLower === 'name' || nameLower === 'self-serve' || nameLower === 'self serve') {
+        continue;
+      }
+
+      if (!nameTrimmed) {
+        continue;
+      }
+
+      const matchingRule = productRuleMap.get(nameLower);
 
       if (matchingRule) {
         // This is a product row
         if (!currentStaff) {
-          console.warn(`Product row without staff name: ${firstCell}`);
-          unmatchedProducts.push(firstCell);
+          console.warn(`Product row without staff name: ${nameTrimmed}`);
+          unmatchedProducts.push(nameTrimmed);
+          rowsSkippedNoStaff++;
           continue; // Skip products without staff name
         }
 
-        // Get quantity from "Volume In-Store" column or "Total"
-        const quantityStr = row['Volume In-Store'] || row['Volume In Store'] || row['Total'] || row['total'] || '0';
-        const quantity = parseFloat(quantityStr);
+        // Get quantity from "Volume In-Store" column (handle various formats)
+        const quantityRaw = row['Volume In-Store'] ?? 
+                           row['Volume In Store'] ?? 
+                           row['VolumeInStore'] ?? 
+                           row['Volume In-store'] ?? 
+                           '0';
+        
+        const quantity = parseFloat(quantityRaw);
 
-        if (isNaN(quantity)) {
-          console.warn(`Invalid quantity for product ${firstCell}: ${quantityStr}`);
+        // Skip if quantity is NaN or <= 0
+        if (isNaN(quantity) || quantity <= 0) {
+          console.warn(`Invalid quantity for product ${nameTrimmed}: ${quantityRaw}`);
+          rowsSkippedInvalidQuantity++;
           continue;
         }
 
@@ -227,6 +252,7 @@ export async function parseReportCsvs(reportId: string) {
 
         if (!userId) {
           console.warn(`No user found for staff: ${currentStaff}`);
+          rowsSkippedNoStaff++;
           continue;
         }
 
@@ -234,17 +260,18 @@ export async function parseReportCsvs(reportId: string) {
           report_id: reportId,
           location_id: locationId,
           user_id: userId,
-          product_name: firstCell,
+          product_name: nameTrimmed,
           category: matchingRule.category,
           arcade_group_label: matchingRule.arcade_group_label,
-          quantity,
+          value: quantity, // Use 'value' column instead of 'quantity'
         });
       } else {
         // This might be a staff name row
         // If it's not a product and not blank, treat as staff
-        if (firstCell.length > 0) {
-          currentStaff = firstCell;
+        if (nameTrimmed.length > 0) {
+          currentStaff = nameTrimmed;
         }
+        // Note: rows that don't match a product rule are typically staff names, which is expected
       }
     }
 
@@ -257,7 +284,12 @@ export async function parseReportCsvs(reportId: string) {
     const validMetricRows = metricRows.filter((row) => row.user_id);
 
     if (validMetricRows.length === 0) {
-      console.warn(`No valid metric rows created for location ${locationId}`);
+      console.warn(
+        `No valid metric rows created for location ${locationId}. ` +
+        `Processed ${rowsProcessed} rows. ` +
+        `Skipped: ${rowsSkippedInvalidQuantity} invalid quantity, ` +
+        `${rowsSkippedNoStaff} missing staff`
+      );
       continue;
     }
 
