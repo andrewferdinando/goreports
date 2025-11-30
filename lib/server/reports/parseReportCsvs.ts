@@ -129,29 +129,77 @@ export async function parseReportCsvs(reportId: string) {
         return true;
       });
 
+    // Helper function to find the "Volume In-Store" column dynamically
+    const findQuantityColumn = (row: CsvRow): string | null => {
+      return Object.keys(row).find((key) => {
+        const k = key.toLowerCase();
+        return (
+          k.includes('volume') &&
+          (k.includes('store') || k.includes('in-store') || k.includes('instore')) &&
+          !k.includes('online')
+        );
+      }) || null;
+    };
+
+    // Helper function to extract quantity from a row
+    const extractQuantity = (row: CsvRow, quantityKey: string | null): number => {
+      if (!quantityKey) return NaN;
+      
+      const quantityRaw = row[quantityKey];
+      if (quantityRaw === null || quantityRaw === undefined) return NaN;
+      
+      // Remove non-numeric characters except digits, dots, and minus signs
+      const cleaned = String(quantityRaw).replace(/[^0-9.-]/g, '');
+      const parsed = Number(cleaned);
+      
+      return Number.isNaN(parsed) ? NaN : parsed;
+    };
+
+    // Find the quantity column from the first row (assuming all rows have same structure)
+    const sampleRow = cleanedRows[0];
+    const quantityKey = sampleRow ? findQuantityColumn(sampleRow) : null;
+    
+    if (!quantityKey) {
+      console.warn(`Could not find "Volume In-Store" column in CSV for location ${locationId}`);
+    }
+
     // STEP B: Detect staff vs product and build records
     let currentStaff: string | null = null;
     const metricRows: Array<{
       report_id: string;
       location_id: string;
-      user_id: string;
+      user_id: string | null; // Allow null for location-level rows
       product_name: string;
       category: string;
       arcade_group_label: string | null;
-      value: number; // Use 'value' column instead of 'quantity'
+      value: number;
     }> = [];
 
     const staffNames = new Set<string>();
-    const unmatchedProducts: string[] = [];
 
     // First pass: identify all staff names
     for (const row of cleanedRows) {
-      const firstCell = Object.values(row)[0] || '';
-      const firstCellLower = firstCell.toLowerCase().trim();
-      const matchingRule = productRuleMap.get(firstCellLower);
+      const name = row['Name'] ?? 
+                   row['Self-serve'] ?? 
+                   row['Self serve'] ?? 
+                   Object.values(row)[0] ?? 
+                   '';
+      const nameTrimmed = name.trim();
+      const nameLower = nameTrimmed.toLowerCase();
 
-      if (!matchingRule && firstCell.length > 0) {
-        staffNames.add(firstCell);
+      // Skip header-like rows
+      if (nameLower === 'name' || nameLower === 'self-serve' || nameLower === 'self serve') {
+        continue;
+      }
+
+      if (!nameTrimmed) {
+        continue;
+      }
+
+      const matchingRule = productRuleMap.get(nameLower);
+
+      if (!matchingRule && nameTrimmed.length > 0) {
+        staffNames.add(nameTrimmed);
       }
     }
 
@@ -195,7 +243,6 @@ export async function parseReportCsvs(reportId: string) {
     // STEP D: Build metric rows with staff assignment
     let rowsProcessed = 0;
     let rowsSkippedInvalidQuantity = 0;
-    let rowsSkippedNoStaff = 0;
 
     for (const row of cleanedRows) {
       rowsProcessed++;
@@ -223,47 +270,40 @@ export async function parseReportCsvs(reportId: string) {
 
       if (matchingRule) {
         // This is a product row
-        if (!currentStaff) {
-          console.warn(`Product row without staff name: ${nameTrimmed}`);
-          unmatchedProducts.push(nameTrimmed);
-          rowsSkippedNoStaff++;
-          continue; // Skip products without staff name
-        }
+        // Extract quantity using the dynamically found column
+        const quantity = quantityKey ? extractQuantity(row, quantityKey) : NaN;
 
-        // Get quantity from "Volume In-Store" column (handle various formats)
-        const quantityRaw = row['Volume In-Store'] ?? 
-                           row['Volume In Store'] ?? 
-                           row['VolumeInStore'] ?? 
-                           row['Volume In-store'] ?? 
-                           '0';
-        
-        const quantity = parseFloat(quantityRaw);
-
-        // Skip if quantity is NaN or <= 0
-        if (isNaN(quantity) || quantity <= 0) {
-          console.warn(`Invalid quantity for product ${nameTrimmed}: ${quantityRaw}`);
+        // Skip if quantity is invalid (NaN or <= 0)
+        if (Number.isNaN(quantity) || quantity <= 0) {
+          console.warn(`Invalid quantity for product ${nameTrimmed}: ${row[quantityKey || ''] || 'N/A'}`);
           rowsSkippedInvalidQuantity++;
           continue;
         }
 
-        // Get user_id for current staff
-        const canonicalName = currentStaff.trim().toLowerCase();
-        const userId = userMap.get(canonicalName);
-
-        if (!userId) {
-          console.warn(`No user found for staff: ${currentStaff}`);
-          rowsSkippedNoStaff++;
-          continue;
+        // Determine user_id: use currentStaff if available, otherwise null (location-level)
+        let userId: string | null = null;
+        
+        if (currentStaff) {
+          const canonicalName = currentStaff.trim().toLowerCase();
+          userId = userMap.get(canonicalName) || null;
+          
+          if (!userId) {
+            console.warn(`No user found for staff: ${currentStaff}, creating location-level row`);
+            // Continue with userId = null for location-level aggregate
+          }
+        } else {
+          // Location-level product row (no staff name)
+          console.log(`Location-level product row without staff: ${nameTrimmed}`);
         }
 
         metricRows.push({
           report_id: reportId,
           location_id: locationId,
-          user_id: userId,
+          user_id: userId, // Can be null for location-level rows
           product_name: nameTrimmed,
           category: matchingRule.category,
-          arcade_group_label: matchingRule.arcade_group_label,
-          value: quantity, // Use 'value' column instead of 'quantity'
+          arcade_group_label: matchingRule.arcade_group_label ?? null,
+          value: quantity,
         });
       } else {
         // This might be a staff name row
@@ -275,23 +315,26 @@ export async function parseReportCsvs(reportId: string) {
       }
     }
 
-    // Log unmatched products for future improvements
-    if (unmatchedProducts.length > 0) {
-      console.log(`Unmatched products for location ${locationId}:`, unmatchedProducts);
-    }
-
-    // Filter out rows without user_id (shouldn't happen, but safety check)
-    const validMetricRows = metricRows.filter((row) => row.user_id);
+    // Filter out rows with invalid values (quantity must be > 0)
+    const validMetricRows = metricRows.filter((row) => row.value > 0);
 
     if (validMetricRows.length === 0) {
       console.warn(
         `No valid metric rows created for location ${locationId}. ` +
         `Processed ${rowsProcessed} rows. ` +
-        `Skipped: ${rowsSkippedInvalidQuantity} invalid quantity, ` +
-        `${rowsSkippedNoStaff} missing staff`
+        `Skipped: ${rowsSkippedInvalidQuantity} invalid quantity`
       );
       continue;
     }
+
+    // Log summary
+    const locationLevelRows = validMetricRows.filter((r) => r.user_id === null).length;
+    const userLevelRows = validMetricRows.filter((r) => r.user_id !== null).length;
+    console.log(
+      `Parsed CSV for location ${locationId}: ` +
+      `${validMetricRows.length} total rows (` +
+      `${userLevelRows} user-level, ${locationLevelRows} location-level)`
+    );
 
     // Batch insert metric_values
     const { error: insertError } = await supabase
