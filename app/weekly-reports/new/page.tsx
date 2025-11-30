@@ -1,98 +1,86 @@
-"use client";
-
-import { FormEvent, useRef } from "react";
-import { useRouter } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
 import PrimaryButton from "@/components/ui/PrimaryButton";
-import SecondaryButton from "@/components/ui/SecondaryButton";
+import FileInputButton from "@/components/ui/FileInputButton";
+import { createWeeklyReport } from "./actions";
 
 export default function NewWeeklyReportPage() {
-  const router = useRouter();
-  const aucklandRef = useRef<HTMLInputElement>(null);
-  const christchurchRef = useRef<HTMLInputElement>(null);
-  const queenstownRef = useRef<HTMLInputElement>(null);
-
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-
-    const files = {
-      auckland: aucklandRef.current?.files?.[0],
-      christchurch: christchurchRef.current?.files?.[0],
-      queenstown: queenstownRef.current?.files?.[0],
-    };
-
-    console.log("Selected files:", files);
-
-    router.push("/weekly-reports");
-  };
-
   return (
     <div>
       <PageHeader breadcrumb="Home > New report" title="New report" />
 
       <div className="bg-white rounded-xl border border-gray-200 p-5 max-w-2xl">
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form action={createWeeklyReport} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-[#374151] mb-1">
+                Report label
+              </label>
+              <input
+                type="text"
+                name="label"
+                placeholder="w/c 27 October 2025"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[#374151] mb-1">
+                Week start
+              </label>
+              <input
+                type="date"
+                name="period_start"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[#374151] mb-1">
+                Week end
+              </label>
+              <input
+                type="date"
+                name="period_end"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                required
+              />
+            </div>
+          </div>
+
           <div className="flex items-center justify-between">
             <label className="text-sm text-[#374151]">
               Add Auckland CSV
             </label>
-            <div>
-              <input
-                ref={aucklandRef}
-                type="file"
-                accept=".csv"
-                className="hidden"
-                id="auckland-csv"
-              />
-              <SecondaryButton
-                type="button"
-                onClick={() => aucklandRef.current?.click()}
-              >
-                + Add CSV
-              </SecondaryButton>
-            </div>
+            <FileInputButton
+              id="auckland-csv"
+              name="csv_auckland"
+              accept=".csv"
+              label="+ Add CSV"
+            />
           </div>
 
           <div className="flex items-center justify-between">
             <label className="text-sm text-[#374151]">
               Add Christchurch CSV
             </label>
-            <div>
-              <input
-                ref={christchurchRef}
-                type="file"
-                accept=".csv"
-                className="hidden"
-                id="christchurch-csv"
-              />
-              <SecondaryButton
-                type="button"
-                onClick={() => christchurchRef.current?.click()}
-              >
-                + Add CSV
-              </SecondaryButton>
-            </div>
+            <FileInputButton
+              id="christchurch-csv"
+              name="csv_christchurch"
+              accept=".csv"
+              label="+ Add CSV"
+            />
           </div>
 
           <div className="flex items-center justify-between">
             <label className="text-sm text-[#374151]">
               Add Queenstown CSV
             </label>
-            <div>
-              <input
-                ref={queenstownRef}
-                type="file"
-                accept=".csv"
-                className="hidden"
-                id="queenstown-csv"
-              />
-              <SecondaryButton
-                type="button"
-                onClick={() => queenstownRef.current?.click()}
-              >
-                + Add CSV
-              </SecondaryButton>
-            </div>
+            <FileInputButton
+              id="queenstown-csv"
+              name="csv_queenstown"
+              accept=".csv"
+              label="+ Add CSV"
+            />
           </div>
 
           <div className="mt-6">
@@ -103,4 +91,3 @@ export default function NewWeeklyReportPage() {
     </div>
   );
 }
-
