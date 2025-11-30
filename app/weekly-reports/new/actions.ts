@@ -11,22 +11,33 @@ export async function createWeeklyReport(formData: FormData) {
   // 1. Make sure locations exist
   const locations = await ensureBaseLocations();
 
-  // 2. Read basic report fields
-  const label = String(formData.get('label') || '').trim();
-  const periodStart = String(formData.get('period_start') || '').trim();
-  const periodEnd = String(formData.get('period_end') || '').trim();
-
-  if (!label || !periodStart || !periodEnd) {
-    throw new Error('Missing required report fields');
+  // 2. Read and validate week start date
+  const periodStartRaw = String(formData.get('period_start') || '').trim();
+  if (!periodStartRaw) {
+    throw new Error('Week start is required');
   }
 
-  // 3. Insert report
+  // 3. Auto-generate end date (6 days after start)
+  const start = new Date(periodStartRaw);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  const period_end = end.toISOString().split('T')[0];
+
+  // 4. Auto-generate report label
+  const formattedStart = start.toLocaleDateString('en-NZ', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+  const label = `w/c ${formattedStart}`;
+
+  // 5. Insert report
   const { data: report, error: reportError } = await supabase
     .from('reports')
     .insert({
       type: 'weekly',
-      period_start: periodStart,
-      period_end: periodEnd,
+      period_start: periodStartRaw,
+      period_end,
       label,
       created_by: 'Mickey' // TODO: later replace with real user / config
     })
@@ -40,14 +51,14 @@ export async function createWeeklyReport(formData: FormData) {
 
   const reportId = report.id as string;
 
-  // Helper: map code -> file field name
+  // 6. Helper: map code -> file field name
   const locationFileFields: { code: string; field: string }[] = [
     { code: 'AKL', field: 'csv_auckland' },
     { code: 'CHC', field: 'csv_christchurch' },
     { code: 'QT', field: 'csv_queenstown' },
   ];
 
-  // 4. For each location, upload CSV (if provided) and create report_uploads row
+  // 7. For each location, upload CSV (if provided) and create report_uploads row
   for (const { code, field } of locationFileFields) {
     const file = formData.get(field) as File | null;
 

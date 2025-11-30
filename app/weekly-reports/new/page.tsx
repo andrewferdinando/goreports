@@ -10,41 +10,16 @@ export default function NewWeeklyReportPage() {
 
       <div className="bg-white rounded-xl border border-gray-200 p-5 max-w-2xl">
         <form action={createWeeklyReport} className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-[#374151] mb-1">
-                Report label
-              </label>
-              <input
-                type="text"
-                name="label"
-                placeholder="w/c 27 October 2025"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-[#374151] mb-1">
-                Week start
-              </label>
-              <input
-                type="date"
-                name="period_start"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-[#374151] mb-1">
-                Week end
-              </label>
-              <input
-                type="date"
-                name="period_end"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                required
-              />
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-[#374151] mb-1">
+              Week start
+            </label>
+            <input
+              type="date"
+              name="period_start"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              required
+            />
           </div>
 
           <div className="flex items-center justify-between">
