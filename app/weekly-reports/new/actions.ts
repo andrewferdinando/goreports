@@ -108,8 +108,10 @@ export async function createWeeklyReport(formData: FormData) {
   // - Calculate combo % as: combo_qty / (combo_qty + non_combo_qty), ignoring all other category products
   // For now, just persist the uploads and redirect to the report detail page.
 
-  // Revalidate list and redirect to report detail page
+  // Revalidate list
   revalidatePath('/weekly-reports');
-  redirect(`/weekly-reports/${reportId}`);
+  
+  // Return reportId instead of redirecting so client can trigger parsing
+  return { reportId };
 }
 
