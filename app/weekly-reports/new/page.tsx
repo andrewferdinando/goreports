@@ -3,6 +3,8 @@
 import { FormEvent, useRef } from "react";
 import { useRouter } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
+import PrimaryButton from "@/components/ui/PrimaryButton";
+import SecondaryButton from "@/components/ui/SecondaryButton";
 
 export default function NewWeeklyReportPage() {
   const router = useRouter();
@@ -42,12 +44,12 @@ export default function NewWeeklyReportPage() {
                 className="hidden"
                 id="auckland-csv"
               />
-              <label
-                htmlFor="auckland-csv"
-                className="bg-gradient-to-r from-[#6366F1] to-[#4F46E5] text-white text-sm font-semibold h-11 px-5 rounded-lg hover:shadow-md hover:-translate-y-[1px] transition-all cursor-pointer inline-block"
+              <SecondaryButton
+                type="button"
+                onClick={() => aucklandRef.current?.click()}
               >
                 + Add CSV
-              </label>
+              </SecondaryButton>
             </div>
           </div>
 
@@ -63,12 +65,12 @@ export default function NewWeeklyReportPage() {
                 className="hidden"
                 id="christchurch-csv"
               />
-              <label
-                htmlFor="christchurch-csv"
-                className="bg-gradient-to-r from-[#6366F1] to-[#4F46E5] text-white text-sm font-semibold h-11 px-5 rounded-lg hover:shadow-md hover:-translate-y-[1px] transition-all cursor-pointer inline-block"
+              <SecondaryButton
+                type="button"
+                onClick={() => christchurchRef.current?.click()}
               >
                 + Add CSV
-              </label>
+              </SecondaryButton>
             </div>
           </div>
 
@@ -84,22 +86,17 @@ export default function NewWeeklyReportPage() {
                 className="hidden"
                 id="queenstown-csv"
               />
-              <label
-                htmlFor="queenstown-csv"
-                className="bg-gradient-to-r from-[#6366F1] to-[#4F46E5] text-white text-sm font-semibold h-11 px-5 rounded-lg hover:shadow-md hover:-translate-y-[1px] transition-all cursor-pointer inline-block"
+              <SecondaryButton
+                type="button"
+                onClick={() => queenstownRef.current?.click()}
               >
                 + Add CSV
-              </label>
+              </SecondaryButton>
             </div>
           </div>
 
-          <div className="pt-4">
-            <button
-              type="submit"
-              className="bg-gradient-to-r from-[#6366F1] to-[#4F46E5] text-white text-sm font-semibold h-11 px-5 rounded-lg hover:shadow-md hover:-translate-y-[1px] transition-all"
-            >
-              Submit
-            </button>
+          <div className="mt-6">
+            <PrimaryButton type="submit">Submit</PrimaryButton>
           </div>
         </form>
       </div>

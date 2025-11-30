@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
+import PrimaryButton from "@/components/ui/PrimaryButton";
 
 interface Report {
   id: number;
@@ -29,11 +30,8 @@ export default function WeeklyReportsPage() {
         breadcrumb="Home > Weekly reports"
         title="Weekly reports"
         action={
-          <Link
-            href="/weekly-reports/new"
-            className="bg-gradient-to-r from-[#6366F1] to-[#4F46E5] text-white text-sm font-semibold h-11 px-5 rounded-lg hover:shadow-md hover:-translate-y-[1px] transition-all"
-          >
-            + New Report
+          <Link href="/weekly-reports/new">
+            <PrimaryButton>+ New Report</PrimaryButton>
           </Link>
         }
       />

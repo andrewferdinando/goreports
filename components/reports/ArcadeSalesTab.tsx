@@ -11,6 +11,10 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+// TODO: On the consolidated chart, the X-axis labels for the spend offers should just be
+// "Spend $30", "Spend $50", "Spend $70", "Spend $100" (without the "Get $X" part),
+// because the "Get" value varies by location. We'll handle the exact per-location offer
+// names in tooltips or underlying data later.
 const dummyData = [
   { offer: "Offer A", auckland: 45, christchurch: 32, queenstown: 28 },
   { offer: "Offer B", auckland: 52, christchurch: 38, queenstown: 35 },

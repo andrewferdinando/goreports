@@ -1,22 +1,23 @@
 "use client";
 
-interface StaffPerformance {
+interface ArcadePerformer {
   name: string;
-  sales: number;
+  cards: number;
+  location: string;
   rank: number;
 }
 
-const dummyStaff: StaffPerformance[] = [
-  { name: "Sarah Johnson", sales: 245, rank: 1 },
-  { name: "Mike Chen", sales: 238, rank: 2 },
-  { name: "Emma Wilson", sales: 231, rank: 3 },
-  { name: "David Brown", sales: 198, rank: 4 },
-  { name: "Lisa Anderson", sales: 192, rank: 5 },
-  { name: "Tom Martinez", sales: 185, rank: 6 },
-  { name: "Alex Taylor", sales: 179, rank: 7 },
-  { name: "Jordan Lee", sales: 165, rank: 8 },
-  { name: "Sam Davis", sales: 158, rank: 9 },
-  { name: "Casey White", sales: 142, rank: 10 },
+const arcadePerformers: ArcadePerformer[] = [
+  { name: "Olivia", cards: 44, location: "QT", rank: 1 },
+  { name: "Hannah", cards: 33, location: "CHC", rank: 2 },
+  { name: "Miki", cards: 24, location: "CHC", rank: 3 },
+  { name: "Sarah", cards: 22, location: "AKL", rank: 4 },
+  { name: "Mike", cards: 21, location: "AKL", rank: 5 },
+  { name: "Emma", cards: 19, location: "QT", rank: 6 },
+  { name: "David", cards: 18, location: "CHC", rank: 7 },
+  { name: "Lisa", cards: 15, location: "AKL", rank: 8 },
+  { name: "Tom", cards: 14, location: "QT", rank: 9 },
+  { name: "Alex", cards: 12, location: "CHC", rank: 10 },
 ];
 
 export default function IndividualArcadeTab() {
@@ -35,18 +36,16 @@ export default function IndividualArcadeTab() {
         Individual Arcade Performance
       </h2>
       <div className="space-y-3">
-        {dummyStaff.map((staff) => (
+        {arcadePerformers.map((performer) => (
           <div
-            key={staff.name}
+            key={`${performer.name}-${performer.rank}`}
             className={`flex items-center justify-between px-4 py-3 rounded-lg ${getPillStyle(
-              staff.rank
+              performer.rank
             )}`}
           >
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium">#{staff.rank}</span>
-              <span className="text-sm font-medium">{staff.name}</span>
-            </div>
-            <span className="text-sm font-semibold">{staff.sales} sales</span>
+            <span className="text-sm font-medium uppercase tracking-wide">
+              {performer.name} {performer.cards} CARDS – {performer.location}
+            </span>
           </div>
         ))}
       </div>
