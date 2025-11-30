@@ -3,6 +3,10 @@
 import { useParams } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
 import Tabs from "@/components/Tabs";
+import ArcadeSalesTab from "@/components/reports/ArcadeSalesTab";
+import IndividualArcadeTab from "@/components/reports/IndividualArcadeTab";
+import ComboSalesTab from "@/components/reports/ComboSalesTab";
+import IndividualSalesTab from "@/components/reports/IndividualSalesTab";
 
 export default function WeeklyReportDetailPage() {
   const params = useParams();
@@ -13,50 +17,22 @@ export default function WeeklyReportDetailPage() {
     {
       id: "arcade-sales",
       label: "Arcade Sales",
-      content: (
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h2 className="text-2xl font-semibold text-[#0A0A0A] mb-4">
-            Arcade Sales
-          </h2>
-          <p className="text-sm text-[#374151]">Chart / table will go here</p>
-        </div>
-      ),
+      content: <ArcadeSalesTab />,
     },
     {
       id: "individual-arcade",
       label: "Individual Arcade",
-      content: (
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h2 className="text-2xl font-semibold text-[#0A0A0A] mb-4">
-            Individual Arcade
-          </h2>
-          <p className="text-sm text-[#374151]">Chart / table will go here</p>
-        </div>
-      ),
+      content: <IndividualArcadeTab />,
     },
     {
       id: "combo-sales",
       label: "Combo Sales",
-      content: (
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h2 className="text-2xl font-semibold text-[#0A0A0A] mb-4">
-            Combo Sales
-          </h2>
-          <p className="text-sm text-[#374151]">Chart / table will go here</p>
-        </div>
-      ),
+      content: <ComboSalesTab />,
     },
     {
       id: "individual-sales",
       label: "Individual Sales",
-      content: (
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h2 className="text-2xl font-semibold text-[#0A0A0A] mb-4">
-            Individual Sales
-          </h2>
-          <p className="text-sm text-[#374151]">Chart / table will go here</p>
-        </div>
-      ),
+      content: <IndividualSalesTab />,
     },
   ];
 
