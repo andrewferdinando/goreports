@@ -6,7 +6,8 @@ import { getSupabaseServerClient } from '@/lib/supabaseServer';
 interface ProductRule {
   id: string;
   location_id: string;
-  product_pattern: string;
+  product_name: string;
+  product_pattern?: string; // Keep for backward compatibility
   category: string;
   arcade_group_label: string | null;
   match_type: string;
@@ -16,15 +17,10 @@ interface CsvRow {
   [key: string]: string;
 }
 
-interface ProductRule {
-  id: string;
-  location_id: string;
-  product_pattern: string;
-  category: string;
-  arcade_group_label: string | null;
-  match_type: string;
-}
-
+/**
+ * Parse all CSVs for a report and create location-level metric rows.
+ * Location-level only: user_id is always null.
+ */
 export async function parseReportCsvs(reportId: string) {
   const supabase = getSupabaseServerClient();
 
@@ -53,302 +49,184 @@ export async function parseReportCsvs(reportId: string) {
       .download(storagePath);
 
     if (downloadError || !csvData) {
-      console.error(`Failed to download CSV for ${storagePath}`, downloadError);
+      console.error(`[parseReportCsvs] Failed to download CSV for ${storagePath}`, downloadError);
       throw new Error(`Failed to download CSV: ${downloadError?.message}`);
     }
 
     // Convert blob to text
     const csvText = await csvData.text();
 
-    // Parse CSV using papaparse
+    // Parse CSV using papaparse with headers
     const parseResult = Papa.parse<CsvRow>(csvText, {
       header: true,
-      skipEmptyLines: true,
+      skipEmptyLines: false, // We'll handle blank rows ourselves
       transformHeader: (header) => header.trim(),
     });
 
     if (parseResult.errors.length > 0) {
-      console.error('CSV parsing errors:', parseResult.errors);
-      throw new Error(`CSV parsing failed: ${parseResult.errors[0].message}`);
+      console.warn('[parseReportCsvs] CSV parsing warnings:', parseResult.errors);
+      // Don't throw - continue processing
+    }
+
+    if (!parseResult.data || parseResult.data.length === 0) {
+      console.warn(`[parseReportCsvs] No data rows found in CSV for location ${locationId}`);
+      continue;
+    }
+
+    // Find the quantity column dynamically
+    // First header whose lowercased name includes "volume" and "store" but not "online"
+    const firstRow = parseResult.data[0];
+    const quantityKey = Object.keys(firstRow).find((key) => {
+      const k = key.toLowerCase();
+      return k.includes('volume') && k.includes('store') && !k.includes('online');
+    });
+
+    if (!quantityKey) {
+      console.error(
+        `[parseReportCsvs] Could not find "Volume In-Store" column in CSV for location ${locationId}. ` +
+        `Available columns: ${Object.keys(firstRow).join(', ')}`
+      );
+      continue; // Skip this file
     }
 
     // Load product_rules for this location (exact match only)
-    const { data: productRules, error: rulesError } = await supabase
+    const { data: rules, error: rulesError } = await supabase
       .from('product_rules')
       .select('*')
       .eq('location_id', locationId)
       .eq('match_type', 'exact');
 
     if (rulesError) {
-      throw new Error(`Failed to load product rules: ${rulesError.message}`);
+      console.error(`[parseReportCsvs] Failed to load product rules for location ${locationId}:`, rulesError);
+      continue; // Skip this file
     }
 
-    if (!productRules || productRules.length === 0) {
-      throw new Error(`No product rules found for location ${locationId}`);
+    if (!rules || rules.length === 0) {
+      console.warn(`[parseReportCsvs] No product rules found for location ${locationId}`);
+      continue; // Skip this file
     }
 
-    // Create a map of product_pattern -> rule for quick lookup
-    const productRuleMap = new Map<string, ProductRule>();
-    for (const rule of productRules) {
-      productRuleMap.set(rule.product_pattern.trim().toLowerCase(), rule);
-    }
-
-    // STEP A: Clean CSV rows
-    const cleanedRows = parseResult.data
-      .map((row) => {
-        // Trim all values
-        const cleaned: CsvRow = {};
-        for (const key in row) {
-          cleaned[key.trim()] = String(row[key] || '').trim();
-        }
-        return cleaned;
-      })
-      .filter((row) => {
-        // Ignore blank rows
-        const hasContent = Object.values(row).some((val) => val.length > 0);
-        if (!hasContent) return false;
-
-        // Ignore header row (check if first cell looks like a header)
-        const firstValue = Object.values(row)[0]?.toLowerCase() || '';
-        if (firstValue.includes('staff') || firstValue.includes('product') || firstValue === 'name' || firstValue === 'self-serve' || firstValue === 'self serve') {
-          return false;
-        }
-
-        // Ignore rows containing "Self Serve" in any cell
-        const rowText = Object.values(row).join(' ').toLowerCase();
-        if (rowText.includes('self serve') || rowText.includes('self-serve')) {
-          return false;
-        }
-
-        // Ignore rows containing "Volume Online"
-        if (rowText.includes('volume online')) {
-          return false;
-        }
-
-        // Don't filter by Total anymore - we'll check Volume In-Store later
-        return true;
-      });
-
-    // Helper function to find the "Volume In-Store" column dynamically
-    const findQuantityColumn = (row: CsvRow): string | null => {
-      return Object.keys(row).find((key) => {
-        const k = key.toLowerCase();
-        return (
-          k.includes('volume') &&
-          (k.includes('store') || k.includes('in-store') || k.includes('instore')) &&
-          !k.includes('online')
-        );
-      }) || null;
+    // Build lookup function for product matching
+    const matchRuleForProduct = (productName: string): ProductRule | null => {
+      const target = productName.trim().toLowerCase();
+      // Try product_name first, fallback to product_pattern for backward compatibility
+      return (
+        rules.find(
+          (r) =>
+            r.match_type === 'exact' &&
+            ((r.product_name && r.product_name.trim().toLowerCase() === target) ||
+              (r.product_pattern && r.product_pattern.trim().toLowerCase() === target))
+        ) ?? null
+      );
     };
 
-    // Helper function to extract quantity from a row
-    const extractQuantity = (row: CsvRow, quantityKey: string | null): number => {
-      if (!quantityKey) return NaN;
-      
-      const quantityRaw = row[quantityKey];
-      if (quantityRaw === null || quantityRaw === undefined) return NaN;
-      
-      // Remove non-numeric characters except digits, dots, and minus signs
-      const cleaned = String(quantityRaw).replace(/[^0-9.-]/g, '');
-      const parsed = Number(cleaned);
-      
-      return Number.isNaN(parsed) ? NaN : parsed;
-    };
-
-    // Find the quantity column from the first row (assuming all rows have same structure)
-    const sampleRow = cleanedRows[0];
-    const quantityKey = sampleRow ? findQuantityColumn(sampleRow) : null;
-    
-    if (!quantityKey) {
-      console.warn(`Could not find "Volume In-Store" column in CSV for location ${locationId}`);
-    }
-
-    // STEP B: Detect staff vs product and build records
-    let currentStaff: string | null = null;
+    // Process all rows after the first header
     const metricRows: Array<{
       report_id: string;
       location_id: string;
-      user_id: string | null; // Allow null for location-level rows
+      user_id: null; // Always null for location-level rows
       product_name: string;
       category: string;
       arcade_group_label: string | null;
       value: number;
     }> = [];
 
-    const staffNames = new Set<string>();
+    const unmatchedProducts = new Set<string>();
 
-    // First pass: identify all staff names
-    for (const row of cleanedRows) {
-      const name = row['Name'] ?? 
-                   row['Self-serve'] ?? 
-                   row['Self serve'] ?? 
-                   Object.values(row)[0] ?? 
-                   '';
-      const nameTrimmed = name.trim();
-      const nameLower = nameTrimmed.toLowerCase();
+    // Numeric fields to check for staff name rows
+    const otherNumericFields = ['Volume Online', 'Sales In-Store', 'Sales Online', 'Discounts', 'Subtotal', 'Tax', 'Total'];
 
-      // Skip header-like rows
-      if (nameLower === 'name' || nameLower === 'self-serve' || nameLower === 'self serve') {
+    for (const row of parseResult.data) {
+      // Extract product name from 'Name' column
+      const rawName = (row['Name'] ?? '').trim();
+
+      // Skip blank name rows
+      if (!rawName) {
         continue;
       }
 
-      if (!nameTrimmed) {
+      const lowerName = rawName.toLowerCase();
+
+      // Skip totals / section headers
+      if (
+        lowerName === 'self-serve' ||
+        lowerName.startsWith('total ') ||
+        lowerName === 'grand total' ||
+        lowerName.startsWith('grand total')
+      ) {
         continue;
       }
 
-      const matchingRule = productRuleMap.get(nameLower);
+      // Extract quantity from Volume In-Store column
+      const quantityRaw = row[quantityKey];
+      const quantity =
+        quantityRaw === null || quantityRaw === undefined
+          ? NaN
+          : Number(String(quantityRaw).replace(/[^0-9.-]/g, ''));
 
-      if (!matchingRule && nameTrimmed.length > 0) {
-        staffNames.add(nameTrimmed);
+      // Check if this is a staff name row: name present but all numeric cells empty
+      const allNumericEmpty = otherNumericFields.every((k) => {
+        const val = row[k];
+        return val === null || val === undefined || String(val).trim() === '';
+      });
+
+      if (allNumericEmpty && (quantityRaw === '' || quantityRaw === undefined || quantityRaw === null)) {
+        // This is a staff section header like "Milan Hay" – ignore it
+        continue;
       }
+
+      // Skip rows with invalid quantity
+      if (Number.isNaN(quantity) || quantity <= 0) {
+        continue;
+      }
+
+      // At this stage we have a valid product row
+      const productName = rawName;
+      const rule = matchRuleForProduct(productName);
+
+      if (!rule) {
+        unmatchedProducts.add(productName);
+        continue;
+      }
+
+      // Create location-level metric row
+      metricRows.push({
+        report_id: reportId,
+        location_id: locationId,
+        user_id: null, // Location-level only
+        product_name: productName,
+        category: rule.category, // 'combo' | 'non_combo' | 'other'
+        arcade_group_label: rule.arcade_group_label ?? null,
+        value: quantity,
+      });
     }
 
-    // STEP C: Auto-create users
-    const userMap = new Map<string, string>(); // canonicalName -> userId
+    // Insert metric rows if any were created
+    if (metricRows.length > 0) {
+      const { error: insertError } = await supabase.from('metric_values').insert(metricRows);
 
-    for (const staffName of staffNames) {
-      const canonicalName = staffName.trim().toLowerCase();
-
-      // Check if user exists
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('location_id', locationId)
-        .eq('canonical_name', canonicalName)
-        .single();
-
-      if (existingUser) {
-        userMap.set(canonicalName, existingUser.id as string);
-      } else {
-        // Create new user
-        const { data: newUser, error: userError } = await supabase
-          .from('users')
-          .insert({
-            name: staffName.trim(),
-            canonical_name: canonicalName,
-            location_id: locationId,
-          })
-          .select()
-          .single();
-
-        if (userError || !newUser) {
-          console.error(`Failed to create user ${staffName}`, userError);
-          throw new Error(`Failed to create user: ${userError?.message}`);
-        }
-
-        userMap.set(canonicalName, newUser.id as string);
+      if (insertError) {
+        console.error(`[parseReportCsvs] Failed to insert metric values for location ${locationId}:`, insertError);
+        throw new Error(`Failed to insert metric values: ${insertError.message}`);
       }
-    }
-
-    // STEP D: Build metric rows with staff assignment
-    let rowsProcessed = 0;
-    let rowsSkippedInvalidQuantity = 0;
-
-    for (const row of cleanedRows) {
-      rowsProcessed++;
-
-      // Extract name from first column (handle various header names)
-      const name = row['Name'] ?? 
-                   row['Self-serve'] ?? 
-                   row['Self serve'] ?? 
-                   Object.values(row)[0] ?? 
-                   '';
-      
-      const nameTrimmed = name.trim();
-      const nameLower = nameTrimmed.toLowerCase();
-
-      // Skip header-like rows
-      if (nameLower === 'name' || nameLower === 'self-serve' || nameLower === 'self serve') {
-        continue;
-      }
-
-      if (!nameTrimmed) {
-        continue;
-      }
-
-      const matchingRule = productRuleMap.get(nameLower);
-
-      if (matchingRule) {
-        // This is a product row
-        // Extract quantity using the dynamically found column
-        const quantity = quantityKey ? extractQuantity(row, quantityKey) : NaN;
-
-        // Skip if quantity is invalid (NaN or <= 0)
-        if (Number.isNaN(quantity) || quantity <= 0) {
-          console.warn(`Invalid quantity for product ${nameTrimmed}: ${row[quantityKey || ''] || 'N/A'}`);
-          rowsSkippedInvalidQuantity++;
-          continue;
-        }
-
-        // Determine user_id: use currentStaff if available, otherwise null (location-level)
-        let userId: string | null = null;
-        
-        if (currentStaff) {
-          const canonicalName = currentStaff.trim().toLowerCase();
-          userId = userMap.get(canonicalName) || null;
-          
-          if (!userId) {
-            console.warn(`No user found for staff: ${currentStaff}, creating location-level row`);
-            // Continue with userId = null for location-level aggregate
-          }
-        } else {
-          // Location-level product row (no staff name)
-          console.log(`Location-level product row without staff: ${nameTrimmed}`);
-        }
-
-        metricRows.push({
-          report_id: reportId,
-          location_id: locationId,
-          user_id: userId, // Can be null for location-level rows
-          product_name: nameTrimmed,
-          category: matchingRule.category,
-          arcade_group_label: matchingRule.arcade_group_label ?? null,
-          value: quantity,
-        });
-      } else {
-        // This might be a staff name row
-        // If it's not a product and not blank, treat as staff
-        if (nameTrimmed.length > 0) {
-          currentStaff = nameTrimmed;
-        }
-        // Note: rows that don't match a product rule are typically staff names, which is expected
-      }
-    }
-
-    // Filter out rows with invalid values (quantity must be > 0)
-    const validMetricRows = metricRows.filter((row) => row.value > 0);
-
-    if (validMetricRows.length === 0) {
-      console.warn(
-        `No valid metric rows created for location ${locationId}. ` +
-        `Processed ${rowsProcessed} rows. ` +
-        `Skipped: ${rowsSkippedInvalidQuantity} invalid quantity`
-      );
-      continue;
     }
 
     // Log summary
-    const locationLevelRows = validMetricRows.filter((r) => r.user_id === null).length;
-    const userLevelRows = validMetricRows.filter((r) => r.user_id !== null).length;
-    console.log(
-      `Parsed CSV for location ${locationId}: ` +
-      `${validMetricRows.length} total rows (` +
-      `${userLevelRows} user-level, ${locationLevelRows} location-level)`
-    );
+    console.info('[parseReportCsvs] summary', {
+      locationId,
+      reportId,
+      insertedMetricCount: metricRows.length,
+      unmatchedProducts: Array.from(unmatchedProducts).sort(),
+    });
 
-    // Batch insert metric_values
-    const { error: insertError } = await supabase
-      .from('metric_values')
-      .insert(validMetricRows);
-
-    if (insertError) {
-      console.error(`Failed to insert metric values for location ${locationId}`, insertError);
-      throw new Error(`Failed to insert metric values: ${insertError.message}`);
+    if (metricRows.length === 0) {
+      console.warn(
+        `[parseReportCsvs] No valid metric rows created for location ${locationId}. ` +
+        `Unmatched products: ${Array.from(unmatchedProducts).join(', ')}`
+      );
+      // Don't throw - report page should still load with "No data available"
     }
-
-    console.log(`Successfully parsed CSV for location ${locationId}: ${validMetricRows.length} metric rows created`);
   }
 
   return { success: true, message: 'CSVs parsed successfully' };
 }
-
