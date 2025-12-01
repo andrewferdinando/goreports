@@ -7,8 +7,10 @@ import { getSupabaseServerClient } from '@/lib/supabaseServer';
 // ============================================================================
 
 export interface ArcadeSalesData {
-  label: string;
-  quantity: number;
+  product: string; // arcade_group_label (e.g., "$10 Card", "Spend $30")
+  auckland: number;
+  christchurch: number;
+  queenstown: number;
 }
 
 export interface IndividualArcadeData {
@@ -36,38 +38,91 @@ export interface IndividualComboData {
 // ============================================================================
 // Arcade Sales Tab
 // ============================================================================
-// Includes: category IN ('combo', 'other') AND arcade_group_label IS NOT NULL
+// Includes: category = 'arcade'
 // Groups by: location_id and arcade_group_label, summing value
+// Returns: One row per product with values for each venue
 
 export async function getArcadeSales(reportId: string): Promise<ArcadeSalesData[]> {
   const supabase = getSupabaseServerClient();
 
-  const { data, error } = await supabase
+  // Query metric_values with category = 'arcade'
+  const { data: metricData, error: metricError } = await supabase
     .from('metric_values')
-    .select('arcade_group_label, location_id, value')
+    .select('location_id, arcade_group_label, value')
     .eq('report_id', reportId)
-    .in('category', ['combo', 'other'])
+    .eq('category', 'arcade')
     .not('arcade_group_label', 'is', null);
 
-  if (error) {
-    throw new Error(`Failed to fetch arcade sales: ${error.message}`);
+  if (metricError) {
+    throw new Error(`Failed to fetch arcade sales: ${metricError.message}`);
   }
 
-  if (!data || data.length === 0) {
+  if (!metricData || metricData.length === 0) {
     return [];
   }
 
-  // Group by arcade_group_label (across all locations) and sum values
-  const grouped = new Map<string, number>();
-  for (const row of data) {
-    const label = row.arcade_group_label as string;
-    const qty = (row.value as number) || 0;
-    grouped.set(label, (grouped.get(label) || 0) + qty);
+  // Get unique location IDs
+  const locationIds = [...new Set(metricData.map((m) => m.location_id as string).filter(Boolean))];
+
+  if (locationIds.length === 0) {
+    return [];
   }
 
-  return Array.from(grouped.entries())
-    .map(([label, quantity]) => ({ label, quantity }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+  // Fetch locations to get names and codes
+  const { data: locations, error: locationsError } = await supabase
+    .from('locations')
+    .select('id, name, code')
+    .in('id', locationIds);
+
+  if (locationsError) {
+    throw new Error(`Failed to fetch locations: ${locationsError.message}`);
+  }
+
+  // Create location maps
+  const locationNameMap = new Map<string, string>(); // id -> name
+  const locationCodeMap = new Map<string, string>(); // id -> code
+  for (const location of locations || []) {
+    locationNameMap.set(location.id as string, location.name as string);
+    locationCodeMap.set(location.id as string, location.code as string);
+  }
+
+  // Group by arcade_group_label and location_id, summing value
+  // Structure: product -> locationCode -> total
+  const productLocationMap = new Map<string, Map<string, number>>();
+
+  for (const row of metricData) {
+    const locationId = row.location_id as string;
+    const arcadeLabel = row.arcade_group_label as string;
+    const value = (row.value as number) || 0;
+
+    if (!locationId || !arcadeLabel) continue;
+
+    const locationCode = locationCodeMap.get(locationId);
+    if (!locationCode) continue;
+
+    // Initialize product if needed
+    if (!productLocationMap.has(arcadeLabel)) {
+      productLocationMap.set(arcadeLabel, new Map());
+    }
+
+    const locationMap = productLocationMap.get(arcadeLabel)!;
+    locationMap.set(locationCode, (locationMap.get(locationCode) || 0) + value);
+  }
+
+  // Convert to array format with venue columns
+  const result: ArcadeSalesData[] = Array.from(productLocationMap.entries()).map(([product, locationMap]) => {
+    return {
+      product,
+      auckland: locationMap.get('AKL') || 0,
+      christchurch: locationMap.get('CHC') || 0,
+      queenstown: locationMap.get('QT') || 0,
+    };
+  });
+
+  // Sort by product label
+  result.sort((a, b) => a.product.localeCompare(b.product));
+
+  return result;
 }
 
 // ============================================================================

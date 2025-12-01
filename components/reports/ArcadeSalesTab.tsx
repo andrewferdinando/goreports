@@ -12,19 +12,24 @@ import {
 } from "recharts";
 
 interface ArcadeSalesTabProps {
-  data: Array<{ label: string; quantity: number }>;
+  data: Array<{
+    product: string;
+    auckland: number;
+    christchurch: number;
+    queenstown: number;
+  }>;
 }
 
-// TODO: On the consolidated chart, the X-axis labels for the spend offers should just be
-// "Spend $30", "Spend $50", "Spend $70", "Spend $100" (without the "Get $X" part),
-// because the "Get" value varies by location. We'll handle the exact per-location offer
-// names in tooltips or underlying data later.
 export default function ArcadeSalesTab({ data }: ArcadeSalesTabProps) {
-  // Transform data for chart (group by label)
+  // Transform data for grouped bar chart
+  // X-axis: product labels, Y-axis: values, grouped by venue
   const chartData = data.map((item) => ({
-    label: item.label,
-    quantity: item.quantity,
+    product: item.product,
+    Auckland: item.auckland,
+    Christchurch: item.christchurch,
+    Queenstown: item.queenstown,
   }));
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-5">
       <h2 className="text-2xl font-semibold text-[#0A0A0A] mb-6">
@@ -38,7 +43,7 @@ export default function ArcadeSalesTab({ data }: ArcadeSalesTabProps) {
           >
             <CartesianGrid strokeDasharray="3 3" stroke="#D1D5DB" />
             <XAxis
-              dataKey="label"
+              dataKey="product"
               tick={{ fill: "#6B7280", fontSize: 12 }}
               stroke="#D1D5DB"
             />
@@ -59,10 +64,26 @@ export default function ArcadeSalesTab({ data }: ArcadeSalesTabProps) {
                 borderRadius: "8px",
               }}
             />
+            <Legend
+              wrapperStyle={{ fontSize: "12px", paddingTop: "10px" }}
+              iconType="circle"
+            />
             <Bar
-              dataKey="quantity"
+              dataKey="Auckland"
               fill="#6366F1"
-              name="Quantity"
+              name="Auckland"
+              radius={[4, 4, 0, 0]}
+            />
+            <Bar
+              dataKey="Christchurch"
+              fill="#8B5CF6"
+              name="Christchurch"
+              radius={[4, 4, 0, 0]}
+            />
+            <Bar
+              dataKey="Queenstown"
+              fill="#EC4899"
+              name="Queenstown"
               radius={[4, 4, 0, 0]}
             />
           </BarChart>
