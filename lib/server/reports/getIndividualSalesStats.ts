@@ -36,8 +36,31 @@ export async function getIndividualSalesStats(
     return [];
   }
 
+  // Get staff names to check filters
+  const staffNames = [...new Set(staffData.map((s) => s.staff_name as string).filter(Boolean))];
+  
+  // Fetch filters for these staff names
+  const { data: filters } = await supabase
+    .from('staff_report_filters')
+    .select('staff_name, include_in_individual_reports')
+    .in('staff_name', staffNames);
+
+  // Create a map of excluded staff names
+  const excludedStaff = new Set<string>();
+  (filters || []).forEach(filter => {
+    if (filter.include_in_individual_reports === false) {
+      excludedStaff.add(filter.staff_name as string);
+    }
+  });
+
+  // Filter out excluded users (default is included if no filter exists)
+  const filteredStaffData = staffData.filter(row => {
+    const staffName = row.staff_name as string;
+    return !excludedStaff.has(staffName);
+  });
+
   // Get unique location IDs
-  const locationIds = [...new Set(staffData.map((s) => s.location_id as string).filter(Boolean))];
+  const locationIds = [...new Set(filteredStaffData.map((s) => s.location_id as string).filter(Boolean))];
 
   if (locationIds.length === 0) {
     return [];
@@ -63,7 +86,7 @@ export async function getIndividualSalesStats(
   // Equivalent to: GROUP BY location_id, staff_name
   const aggregated = new Map<string, { combo: number; nonCombo: number; locationId: string; staffName: string }>();
 
-  for (const row of staffData) {
+  for (const row of filteredStaffData) {
     const locationId = row.location_id as string;
     const staffName = row.staff_name as string;
     const category = row.category as string;

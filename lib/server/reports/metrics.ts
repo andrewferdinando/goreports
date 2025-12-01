@@ -134,6 +134,7 @@ export async function getArcadeSales(reportId: string): Promise<ArcadeSalesData[
 export async function getIndividualArcade(reportId: string): Promise<IndividualArcadeData[]> {
   const supabase = getSupabaseServerClient();
 
+  // Query staff_metrics for arcade category
   const { data, error } = await supabase
     .from('staff_metrics')
     .select('staff_name, value')
@@ -148,8 +149,31 @@ export async function getIndividualArcade(reportId: string): Promise<IndividualA
     return [];
   }
 
+  // Get staff names to check filters
+  const staffNames = [...new Set(data.map(row => row.staff_name as string).filter(Boolean))];
+  
+  // Fetch filters for these staff names
+  const { data: filters } = await supabase
+    .from('staff_report_filters')
+    .select('staff_name, include_in_individual_reports')
+    .in('staff_name', staffNames);
+
+  // Create a map of excluded staff names
+  const excludedStaff = new Set<string>();
+  (filters || []).forEach(filter => {
+    if (filter.include_in_individual_reports === false) {
+      excludedStaff.add(filter.staff_name as string);
+    }
+  });
+
+  // Filter out excluded users (default is included if no filter exists)
+  const filteredData = data.filter(row => {
+    const staffName = row.staff_name as string;
+    return !excludedStaff.has(staffName);
+  });
+
   // Aggregate values by staff_name
-  const totals = data.reduce((acc, row) => {
+  const totals = filteredData.reduce((acc, row) => {
     const staffName = row.staff_name as string;
     const value = (row.value as number) || 0;
     acc[staffName] = (acc[staffName] || 0) + value;

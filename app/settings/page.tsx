@@ -14,17 +14,33 @@ export default function SettingsPage() {
         Manage how products from your CSV files are categorised.
       </p>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-2xl">
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-[#0A0A0A] mb-2">Product Rules</h2>
-            <p className="text-sm text-[#374151]">
-              Tell the app how to categorise new products.
-            </p>
+      <div className="space-y-4 max-w-2xl">
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-[#0A0A0A] mb-2">Product Rules</h2>
+              <p className="text-sm text-[#374151]">
+                Tell the app how to categorise new products.
+              </p>
+            </div>
+            <Link href="/settings/product-rules">
+              <PrimaryButton className="whitespace-nowrap">Manage rules</PrimaryButton>
+            </Link>
           </div>
-          <Link href="/settings/product-rules">
-            <PrimaryButton className="whitespace-nowrap">Manage rules</PrimaryButton>
-          </Link>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-[#0A0A0A] mb-2">Users</h2>
+              <p className="text-sm text-[#374151]">
+                Choose which users appear in the Individual Arcade and Individual Sales reports.
+              </p>
+            </div>
+            <Link href="/settings/users">
+              <PrimaryButton className="whitespace-nowrap">Manage users</PrimaryButton>
+            </Link>
+          </div>
         </div>
       </div>
     </div>
