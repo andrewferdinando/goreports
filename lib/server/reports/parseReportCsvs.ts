@@ -10,7 +10,6 @@ interface ProductRule {
   product_pattern?: string; // Keep for backward compatibility
   category: string;
   arcade_group_label: string | null;
-  sub_type?: string | null; // e.g., 'spend_x_get_x' for arcade products
   match_type: string;
 }
 
@@ -363,23 +362,28 @@ export async function parseReportCsvs(reportId: string) {
         // ====================================================================
         if (insideStaffBlock && currentStaffName) {
           // Determine category for staff_metrics
-          let staffCategory: string | null = null;
-          
-          // Arcade: Only insert if category === 'arcade' AND sub_type === 'spend_x_get_x'
+          let staffCategory: 'arcade' | 'combo' | 'non_combo' | null = null;
+
           if (productRule.category === 'arcade') {
-            if (productRule.sub_type === 'spend_x_get_x') {
+            // Only count "Spend X Get X" arcade offers
+            const label = productRule.arcade_group_label ?? '';
+            const isSpendArcade = label.startsWith('Spend');
+            const isTenOrTwenty = label === '$10 Card' || label === '$20 Card';
+
+            if (isSpendArcade && !isTenOrTwenty) {
               staffCategory = 'arcade';
+            } else {
+              // skip $10 / $20 and any other arcade that is not Spend X
+              staffCategory = null;
             }
-            // Skip other arcade products (e.g., $10 Arcade, $20 Arcade)
-          } else {
-            // Use rule.category for combo or non_combo
-            if (productRule.category === 'combo' || productRule.category === 'non_combo') {
-              staffCategory = productRule.category;
-            }
-            // Skip 'other' category for staff_metrics (but metric_values already inserted)
+          } else if (
+            productRule.category === 'combo' ||
+            productRule.category === 'non_combo'
+          ) {
+            staffCategory = productRule.category;
           }
 
-          // Only insert if we determined a valid category
+          // When pushing staff rows:
           if (staffCategory) {
             staffRows.push({
               report_id: reportId,
