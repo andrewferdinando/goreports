@@ -135,8 +135,8 @@ export async function getIndividualSalesStats(
     });
   }
 
-  // ORDER BY total_sales DESC
-  result.sort((a, b) => b.totalSales - a.totalSales);
+  // Sort by combo rate (percentage) descending (highest % at top)
+  result.sort((a, b) => b.comboRate - a.comboRate);
 
   return result;
 }
