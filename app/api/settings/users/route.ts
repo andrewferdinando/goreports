@@ -27,17 +27,24 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch staff_report_filters for these names
+    // Handle case where table doesn't exist yet (return empty array, all users included by default)
     const { data: filters, error: filtersError } = await supabase
       .from('staff_report_filters')
       .select('staff_name, include_in_individual_reports')
       .in('staff_name', staffNames);
 
     if (filtersError) {
-      console.error('Error fetching staff filters:', filtersError);
-      return NextResponse.json(
-        { data: null, error: filtersError.message },
-        { status: 500 }
-      );
+      // If table doesn't exist, treat as if no filters exist (all users included)
+      if (filtersError.message.includes('does not exist') || filtersError.message.includes('schema cache')) {
+        console.warn('staff_report_filters table does not exist yet. Please run the migration SQL.');
+        // Continue with empty filters array - all users will be included by default
+      } else {
+        console.error('Error fetching staff filters:', filtersError);
+        return NextResponse.json(
+          { data: null, error: filtersError.message },
+          { status: 500 }
+        );
+      }
     }
 
     // Create a map of staff_name -> include_in_individual_reports
@@ -94,6 +101,13 @@ export async function PATCH(request: NextRequest) {
       .single();
 
     if (upsertError) {
+      // If table doesn't exist, provide helpful error message
+      if (upsertError.message.includes('does not exist') || upsertError.message.includes('schema cache')) {
+        return NextResponse.json(
+          { data: null, error: 'The staff_report_filters table does not exist. Please run the migration SQL in Supabase to create it.' },
+          { status: 500 }
+        );
+      }
       console.error('Error upserting staff filter:', upsertError);
       return NextResponse.json(
         { data: null, error: upsertError.message },
