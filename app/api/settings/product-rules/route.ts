@@ -8,21 +8,47 @@ export async function GET(request: NextRequest) {
     const locationName = searchParams.get('location_name');
     const search = searchParams.get('search');
 
+    // First, get location IDs if filtering by location name
+    let locationIds: string[] | null = null;
+    if (locationName && locationName !== 'All venues') {
+      const { data: locations, error: locError } = await supabase
+        .from('locations')
+        .select('id')
+        .eq('name', locationName);
+
+      if (locError) {
+        console.error('Error fetching locations:', locError);
+        return NextResponse.json(
+          { data: null, error: 'Failed to fetch locations' },
+          { status: 500 }
+        );
+      }
+
+      locationIds = locations?.map(l => l.id as string) || [];
+      if (locationIds.length === 0) {
+        return NextResponse.json({ data: [], error: null });
+      }
+    }
+
+    // Build query with join to locations table
     let query = supabase
       .from('product_rules')
-      .select('*')
+      .select(`
+        *,
+        locations (
+          id,
+          name
+        )
+      `)
       .eq('is_active', true);
 
-    if (locationName && locationName !== 'All venues') {
-      query = query.eq('location_name', locationName);
+    if (locationIds) {
+      query = query.in('location_id', locationIds);
     }
 
     if (search) {
       query = query.ilike('product_pattern', `%${search}%`);
     }
-
-    query = query.order('location_name', { ascending: true })
-      .order('product_pattern', { ascending: true });
 
     const { data, error } = await query;
 
@@ -34,7 +60,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ data: data || [], error: null });
+    // Transform data to include location_name for display
+    const transformedData = (data || []).map((rule: any) => ({
+      ...rule,
+      location_name: rule.locations?.name || 'Unknown',
+    }));
+
+    // Sort by location name, then product pattern
+    transformedData.sort((a: any, b: any) => {
+      const locCompare = (a.location_name || '').localeCompare(b.location_name || '');
+      if (locCompare !== 0) return locCompare;
+      return (a.product_pattern || '').localeCompare(b.product_pattern || '');
+    });
+
+    return NextResponse.json({ data: transformedData, error: null });
   } catch (error) {
     console.error('Error in GET product-rules:', error);
     return NextResponse.json(
@@ -68,12 +107,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get location_id from location_name
+    const { data: location, error: locError } = await supabase
+      .from('locations')
+      .select('id')
+      .eq('name', location_name)
+      .single();
+
+    if (locError || !location) {
+      return NextResponse.json(
+        { data: null, error: `Location "${location_name}" not found` },
+        { status: 400 }
+      );
+    }
+
+    const locationId = location.id as string;
+    const trimmedPattern = product_pattern.trim();
+
     // Check for duplicates (case-insensitive product_pattern match)
     const { data: existingRules, error: checkError } = await supabase
       .from('product_rules')
-      .select('id')
-      .eq('location_name', location_name)
-      .ilike('product_pattern', product_pattern);
+      .select('id, product_pattern')
+      .eq('location_id', locationId);
 
     if (checkError) {
       console.error('Error checking for duplicates:', checkError);
@@ -83,7 +138,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (existingRules && existingRules.length > 0) {
+    // Check for case-insensitive match in JavaScript
+    if (existingRules && existingRules.some(rule => 
+      rule.product_pattern?.trim().toLowerCase() === trimmedPattern.toLowerCase()
+    )) {
       return NextResponse.json(
         { data: null, error: 'A rule with this location and product name already exists' },
         { status: 400 }
@@ -94,14 +152,20 @@ export async function POST(request: NextRequest) {
     const { data: newRule, error: insertError } = await supabase
       .from('product_rules')
       .insert({
-        location_name,
-        product_pattern,
+        location_id: locationId,
+        product_pattern: trimmedPattern,
         category,
         match_type: 'exact',
         is_active: true,
         arcade_group_label: arcade_group_label || null,
       })
-      .select()
+      .select(`
+        *,
+        locations (
+          id,
+          name
+        )
+      `)
       .single();
 
     if (insertError) {
@@ -112,7 +176,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ data: newRule, error: null });
+    // Transform to include location_name
+    const transformedRule = {
+      ...newRule,
+      location_name: newRule.locations?.name || location_name,
+    };
+
+    return NextResponse.json({ data: transformedRule, error: null });
   } catch (error) {
     console.error('Error in POST product-rules:', error);
     return NextResponse.json(
