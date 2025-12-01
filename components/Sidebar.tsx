@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const navItems = [
   { label: "Weekly Reports", href: "/weekly-reports" },
   { label: "Monthly Reports", href: "/monthly-reports" },
+  { label: "Settings", href: "/settings" },
 ];
 
 export default function Sidebar() {
