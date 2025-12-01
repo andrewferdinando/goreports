@@ -10,6 +10,7 @@ interface ProductRule {
   product_pattern?: string; // Keep for backward compatibility
   category: string;
   arcade_group_label: string | null;
+  sub_type?: string | null; // e.g., 'spend_x_get_x' for arcade products
   match_type: string;
 }
 
@@ -362,13 +363,16 @@ export async function parseReportCsvs(reportId: string) {
         // ====================================================================
         if (insideStaffBlock && currentStaffName) {
           // Determine category for staff_metrics
-          // If arcade_group_label IS NOT NULL → category = 'arcade'
-          // Otherwise use rule.category (combo or non_combo)
           let staffCategory: string | null = null;
-          if (productRule.arcade_group_label !== null && productRule.arcade_group_label !== undefined) {
-            staffCategory = 'arcade';
+          
+          // Arcade: Only insert if category === 'arcade' AND sub_type === 'spend_x_get_x'
+          if (productRule.category === 'arcade') {
+            if (productRule.sub_type === 'spend_x_get_x') {
+              staffCategory = 'arcade';
+            }
+            // Skip other arcade products (e.g., $10 Arcade, $20 Arcade)
           } else {
-            // Use rule.category, but only allow 'combo' or 'non_combo' for staff_metrics
+            // Use rule.category for combo or non_combo
             if (productRule.category === 'combo' || productRule.category === 'non_combo') {
               staffCategory = productRule.category;
             }
