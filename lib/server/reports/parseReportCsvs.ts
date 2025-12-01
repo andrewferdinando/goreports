@@ -14,6 +14,24 @@ interface ProductRule {
 }
 
 /**
+ * Helper function to determine if a name looks like a staff member's name.
+ * Staff names are typically alphabetic and don't contain product-like patterns.
+ */
+function looksLikeStaffName(name: string): boolean {
+  // Must contain at least one letter
+  if (!/[A-Za-z]/.test(name)) return false;
+
+  // Ignore obvious product-like patterns: digits or parentheses
+  if (/[0-9]/.test(name)) return false;
+  if (/[()]/.test(name)) return false;
+
+  // Ignore "Total ..." (already skipped) and other keywords if needed
+  // e.g. "Booking Fees", "Manual Discounts" etc could be handled by rules later
+
+  return true;
+}
+
+/**
  * Parse all CSVs for a report and create:
  * - Location-level metric rows in metric_values (for product rows)
  * - Staff-level metric rows in staff_metrics (for staff rows)
@@ -94,7 +112,6 @@ export async function parseReportCsvs(reportId: string) {
     // Find column indices from header row
     let nameIndex = -1;
     let volumeIndex = -1;
-    let productIndex = -1; // Look for "Product" column for staff rows
 
     for (let i = 0; i < headerRow.length; i++) {
       const cell = String(headerRow[i] || '').trim();
@@ -103,11 +120,6 @@ export async function parseReportCsvs(reportId: string) {
       // Find nameIndex: cell exactly matches "Name" (case-insensitive)
       if (nameIndex === -1 && lowerCell === 'name') {
         nameIndex = i;
-      }
-
-      // Find productIndex: cell matches "Product" (case-insensitive)
-      if (productIndex === -1 && lowerCell === 'product') {
-        productIndex = i;
       }
 
       // Find volumeIndex: cell includes "volume" and "store" but not "online"
@@ -186,37 +198,21 @@ export async function parseReportCsvs(reportId: string) {
     // Tracking counters for logging
     let productRowsInserted = 0;
     let staffRowsInserted = 0;
-    let staffRowsSkipped_noRuleMatch = 0;
     let rowsSkipped_invalidQuantity = 0;
     let rowsSkipped_missingName = 0;
-    const unmatchedProducts = new Set<string>();
-    const unmatchedStaff = new Set<string>();
+    const unmatchedRows: Array<{ name: string; quantity: number; locationId: string; reportId: string }> = [];
 
     // Iterate rows after the header row
     for (let i = headerRowIndex + 1; i < parseResult.data.length; i++) {
       const row = parseResult.data[i];
 
-      // Extract name from nameIndex
+      // Extract and normalize name from nameIndex
       const name = (row[nameIndex] || '').trim();
 
-      // Skip rows where name is empty
-      if (!name) {
-        rowsSkipped_missingName++;
-        continue;
-      }
-
-      const lowerName = name.toLowerCase();
-
-      // Skip rows where name is "Self-serve" or starts with "Total " or "Grand Total"
-      if (
-        lowerName === 'self-serve' ||
-        lowerName.startsWith('total ') ||
-        lowerName === 'grand total' ||
-        lowerName.startsWith('grand total')
-      ) {
-        continue;
-      }
-
+      // ========================================================================
+      // STEP 1: Pre-conditions - Extract and validate name and quantity
+      // ========================================================================
+      
       // Check if this looks like a "staff label" row: name present but no numeric values in other cells
       // A staff label row would have name but empty/zero values in numeric columns
       const volumeRaw = (row[volumeIndex] || '').trim();
@@ -237,16 +233,32 @@ export async function parseReportCsvs(reportId: string) {
       }
 
       // ========================================================================
-      // DISTINGUISH STAFF ROWS VS PRODUCT ROWS
+      // STEP 2: Skip rows early (totals / junk)
       // ========================================================================
-      // A row is a PRODUCT if: name matches a product_rule
-      // A row is a STAFF if: name does NOT match a product_rule AND has valid quantity
+      
+      // a) Empty name
+      if (!name) {
+        rowsSkipped_missingName++;
+        continue;
+      }
+
+      // b) Self-serve rows (online)
+      if (/^self-serve$/i.test(name)) {
+        continue;
+      }
+
+      // c) Totals / summary lines (like "Total Sales - Arcade", "Grand Total")
+      if (/^(total|grand total)/i.test(name)) {
+        continue;
+      }
+
+      // ========================================================================
+      // STEP 3: Try to match a product rule
+      // ========================================================================
       const productRule = matchRuleForProduct(name);
 
       if (productRule) {
-        // ====================================================================
         // PRODUCT ROW → Insert into metric_values
-        // ====================================================================
         const productName = name;
         metricRows.push({
           report_id: reportId,
@@ -258,62 +270,29 @@ export async function parseReportCsvs(reportId: string) {
           value: quantity,
         });
         productRowsInserted++;
-      } else {
-        // ====================================================================
-        // STAFF ROW → Insert into staff_metrics
-        // ====================================================================
-        // For staff rows, we need to determine the category from the product they sold
-        // Look for product name in "Product" column
-        // If Product column doesn't exist or is empty, we can't determine category → skip
-        const productName = productIndex >= 0 ? (row[productIndex] || '').trim() : '';
-        
-        if (!productName) {
-          // No product name found → can't determine category → skip this staff row
-          staffRowsSkipped_noRuleMatch++;
-          unmatchedStaff.add(`${name} (no product column)`);
-          continue;
-        }
-        
-        // Match the product against product_rules to get category
-        const staffProductRule = matchRuleForProduct(productName);
+        continue;
+      }
 
-        if (!staffProductRule) {
-          // No matching rule for the product → skip this staff row
-          staffRowsSkipped_noRuleMatch++;
-          unmatchedStaff.add(`${name} (product: ${productName})`);
+      // ========================================================================
+      // STEP 4: If no product rule, decide if it's a staff row
+      // ========================================================================
+      if (!productRule) {
+        if (looksLikeStaffName(name)) {
+          // STAFF ROW → push to staffRows
+          staffRows.push({
+            report_id: reportId,
+            location_id: locationId,
+            staff_name: name,
+            category: 'non_combo', // TEMP default, see below
+            value: quantity,
+          });
+          staffRowsInserted++;
           continue;
         }
 
-        // Determine category based on the matched rule
-        // combo → category = 'combo'
-        // non_combo → category = 'non_combo'
-        // arcade (arcade_group_label IS NOT NULL) → category = 'arcade'
-        let staffCategory: 'combo' | 'non_combo' | 'arcade';
-        
-        if (staffProductRule.arcade_group_label !== null && staffProductRule.arcade_group_label !== undefined) {
-          // Has arcade_group_label → category = 'arcade'
-          staffCategory = 'arcade';
-        } else if (staffProductRule.category === 'combo') {
-          staffCategory = 'combo';
-        } else if (staffProductRule.category === 'non_combo') {
-          staffCategory = 'non_combo';
-        } else {
-          // For 'other' category, we need to check if it should be arcade
-          // If it has arcade_group_label, it's arcade, otherwise skip
-          staffRowsSkipped_noRuleMatch++;
-          unmatchedStaff.add(`${name} (product: ${productName}, category: ${staffProductRule.category})`);
-          continue;
-        }
-
-        // Insert staff row into staff_metrics
-        staffRows.push({
-          report_id: reportId,
-          location_id: locationId,
-          staff_name: name, // Staff member's name from Name column
-          category: staffCategory,
-          value: quantity, // Volume In-Store
-        });
-        staffRowsInserted++;
+        // Otherwise it's an unmatched row
+        unmatchedRows.push({ name, quantity, locationId, reportId });
+        continue;
       }
     }
 
@@ -343,18 +322,16 @@ export async function parseReportCsvs(reportId: string) {
       reportId,
       productRowsInserted,
       staffRowsInserted,
-      staffRowsSkipped_noRuleMatch,
       rowsSkipped_invalidQuantity,
       rowsSkipped_missingName,
-      unmatchedProducts: Array.from(unmatchedProducts).sort(),
-      unmatchedStaff: Array.from(unmatchedStaff).sort(),
+      unmatchedRowsCount: unmatchedRows.length,
+      unmatchedRows: unmatchedRows.map((r) => r.name).sort(),
     });
 
     if (metricRows.length === 0 && staffRows.length === 0) {
       console.warn(
         `[parseReportCsvs] No valid rows created for location ${locationId}. ` +
-        `Unmatched products: ${Array.from(unmatchedProducts).join(', ')}. ` +
-        `Unmatched staff: ${Array.from(unmatchedStaff).join(', ')}`
+        `Unmatched rows: ${unmatchedRows.map((r) => r.name).join(', ')}`
       );
       // Don't throw - report page should still load with "No data available"
     }
