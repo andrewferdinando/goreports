@@ -5,6 +5,17 @@ import PrimaryButton from "@/components/ui/PrimaryButton";
 import { getWeeklyReports } from "@/lib/server/reports/getWeeklyReports";
 import { ReportRow } from "./ReportRow";
 
+const formatNzDate = (isoString?: string | null) => {
+  if (!isoString) return '-';
+
+  return new Date(isoString).toLocaleDateString('en-NZ', {
+    timeZone: 'Pacific/Auckland',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+};
+
 export default async function WeeklyReportsPage() {
   const reports = await getWeeklyReports();
 
@@ -51,10 +62,8 @@ export default async function WeeklyReportsPage() {
                   reportName = '-';
                 }
 
-                // Format created date
-                const createdDate = report.created_at
-                  ? format(new Date(report.created_at), 'dd/MM/yyyy')
-                  : '-';
+                // Format created date in NZ timezone
+                const createdDate = formatNzDate(report.created_at);
 
                 return (
                   <ReportRow
