@@ -88,7 +88,7 @@ export default function ProductRulesPage() {
       />
 
       <p className="text-sm text-[#374151] mb-6">
-        When a new product appears in the CSV, add a rule here so the app knows whether it's a combo, non combo, arcade, or other.
+        When a new product appears in the CSV, add a rule here so the app knows whether it&apos;s a combo, non combo, arcade, or other.
       </p>
 
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
