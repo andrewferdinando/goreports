@@ -36,9 +36,6 @@ export function ReportsTable({ reports }: ReportsTableProps) {
               Report Name
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
-              Period
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
               Created Date
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
@@ -49,7 +46,7 @@ export function ReportsTable({ reports }: ReportsTableProps) {
         <tbody className="bg-white divide-y divide-[#D1D5DB]">
           {reports.length === 0 ? (
             <tr>
-              <td colSpan={4} className="px-6 py-4 text-center text-sm text-[#374151]">
+              <td colSpan={3} className="px-6 py-4 text-center text-sm text-[#374151]">
                 No reports found
               </td>
             </tr>
@@ -57,17 +54,13 @@ export function ReportsTable({ reports }: ReportsTableProps) {
             reports.map((report) => {
               // Format report name: use period_start if available, otherwise fallback to label or '-'
               let reportName: string;
-              let period: string;
               if (report.period_start) {
                 const periodDate = new Date(report.period_start);
                 reportName = format(periodDate, 'MMMM yyyy');
-                period = format(periodDate, 'MMMM yyyy');
               } else if (report.label) {
                 reportName = report.label;
-                period = report.label;
               } else {
                 reportName = '-';
-                period = '-';
               }
 
               // Format created date in NZ timezone
@@ -78,7 +71,6 @@ export function ReportsTable({ reports }: ReportsTableProps) {
                   key={report.id}
                   reportId={report.id}
                   reportName={reportName}
-                  period={period}
                   createdDate={createdDate}
                   onDelete={handleDelete}
                 />

@@ -9,12 +9,11 @@ import SecondaryButton from '@/components/ui/SecondaryButton';
 interface ReportRowProps {
   reportId: string;
   reportName: string;
-  period: string;
   createdDate: string;
   onDelete: () => void;
 }
 
-export function ReportRow({ reportId, reportName, period, createdDate, onDelete }: ReportRowProps) {
+export function ReportRow({ reportId, reportName, createdDate, onDelete }: ReportRowProps) {
   const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
   const [showUploadsModal, setShowUploadsModal] = useState(false);
@@ -49,9 +48,6 @@ export function ReportRow({ reportId, reportName, period, createdDate, onDelete 
       >
         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[#0A0A0A]">
           {reportName}
-        </td>
-        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#374151]">
-          {period}
         </td>
         <td className="px-6 py-4 whitespace-nowrap text-sm text-[#374151]">
           {createdDate}
