@@ -73,9 +73,10 @@ export async function parseReportCsvs(reportId: string) {
     const csvText = await csvData.text();
 
     // Parse CSV without headers - we'll find the header row manually
+    // Use skipEmptyLines: false so we can detect empty rows that end staff blocks
     const parseResult = Papa.parse<string[]>(csvText, {
       header: false,
-      skipEmptyLines: true,
+      skipEmptyLines: false,
     });
 
     if (parseResult.errors.length > 0) {
@@ -88,62 +89,62 @@ export async function parseReportCsvs(reportId: string) {
       continue;
     }
 
-    // Find the header row: first row containing a cell matching /volume\s*in-?store/i
-    let headerRowIndex = -1;
-    let headerRow: string[] | null = null;
-
-    for (let i = 0; i < parseResult.data.length; i++) {
-      const row = parseResult.data[i];
-      const hasVolumeInStore = row.some((cell) => /volume\s*in-?store/i.test(String(cell || '').trim()));
-      if (hasVolumeInStore) {
-        headerRowIndex = i;
-        headerRow = row;
-        break;
+    // Helper function to detect staff header rows
+    // A row is a staff header if: row[0] is non-empty AND every other cell is empty
+    const isStaffHeaderRow = (row: string[]): boolean => {
+      if (row.length === 0) return false;
+      const firstCell = (row[0] || '').trim();
+      if (!firstCell) return false;
+      
+      // Check if all other cells are empty
+      for (let i = 1; i < row.length; i++) {
+        const cell = (row[i] || '').trim();
+        if (cell) return false;
       }
-    }
+      return true;
+    };
 
-    if (!headerRow || headerRowIndex === -1) {
-      console.error(
-        `[parseReportCsvs] Could not find header row with "Volume In-Store" in CSV for location ${locationId}`
-      );
-      continue; // Skip this file
-    }
+    // Helper function to check if a row is a product header row
+    const isProductHeaderRow = (row: string[]): boolean => {
+      return row.some((cell) => /volume\s*in-?store/i.test(String(cell || '').trim()));
+    };
 
-    // Find column indices from header row
-    let nameIndex = -1;
-    let volumeIndex = -1;
+    // Helper function to check if a row is empty
+    const isEmptyRow = (row: string[]): boolean => {
+      return row.every((cell) => !(cell || '').trim());
+    };
 
-    for (let i = 0; i < headerRow.length; i++) {
-      const cell = String(headerRow[i] || '').trim();
-      const lowerCell = cell.toLowerCase();
+    // Helper function to extract column indices from a header row
+    const extractColumnIndices = (headerRow: string[]): { nameIndex: number; volumeIndex: number } | null => {
+      let nameIndex = -1;
+      let volumeIndex = -1;
 
-      // Find nameIndex: cell exactly matches "Name" (case-insensitive)
-      if (nameIndex === -1 && lowerCell === 'name') {
-        nameIndex = i;
+      for (let i = 0; i < headerRow.length; i++) {
+        const cell = String(headerRow[i] || '').trim();
+        const lowerCell = cell.toLowerCase();
+
+        // Find nameIndex: cell exactly matches "Name" (case-insensitive)
+        if (nameIndex === -1 && lowerCell === 'name') {
+          nameIndex = i;
+        }
+
+        // Find volumeIndex: cell includes "volume" and "store" but not "online"
+        if (
+          volumeIndex === -1 &&
+          lowerCell.includes('volume') &&
+          lowerCell.includes('store') &&
+          !lowerCell.includes('online')
+        ) {
+          volumeIndex = i;
+        }
       }
 
-      // Find volumeIndex: cell includes "volume" and "store" but not "online"
-      if (
-        volumeIndex === -1 &&
-        lowerCell.includes('volume') &&
-        lowerCell.includes('store') &&
-        !lowerCell.includes('online')
-      ) {
-        volumeIndex = i;
+      if (nameIndex === -1 || volumeIndex === -1) {
+        return null;
       }
-    }
 
-    if (nameIndex === -1) {
-      console.error(`[parseReportCsvs] Could not find "Name" column in header for location ${locationId}`);
-      continue; // Skip this file
-    }
-
-    if (volumeIndex === -1) {
-      console.error(
-        `[parseReportCsvs] Could not find "Volume In-Store" column in header for location ${locationId}`
-      );
-      continue; // Skip this file
-    }
+      return { nameIndex, volumeIndex };
+    };
 
     // Load product_rules for this location (exact match only)
     const { data: rules, error: rulesError } = await supabase
@@ -176,7 +177,7 @@ export async function parseReportCsvs(reportId: string) {
       );
     };
 
-    // Process rows after the header row
+    // Process rows - collect all data
     const metricRows: Array<{
       report_id: string;
       location_id: string;
@@ -202,165 +203,167 @@ export async function parseReportCsvs(reportId: string) {
     let rowsSkipped_missingName = 0;
     const unmatchedProducts = new Set<string>();
 
-    // Staff block tracking
-    let currentStaffName: string | null = null;
-    let insideStaffBlock = false;
-
-    // Helper function to detect staff header rows
-    // A row is a staff header if: row[0] is non-empty AND every other cell is empty
-    const isStaffHeaderRow = (row: string[]): boolean => {
-      if (row.length === 0) return false;
-      const firstCell = (row[0] || '').trim();
-      if (!firstCell) return false;
-      
-      // Check if all other cells are empty
-      for (let i = 1; i < row.length; i++) {
-        const cell = (row[i] || '').trim();
-        if (cell) return false;
-      }
-      return true;
-    };
-
-    // Helper function to check if a row is a product header row
-    const isProductHeaderRow = (row: string[]): boolean => {
-      return row.some((cell) => /volume\s*in-?store/i.test(String(cell || '').trim()));
-    };
-
-    // Iterate rows after the initial header row
-    for (let i = headerRowIndex + 1; i < parseResult.data.length; i++) {
+    // Find all staff header rows in the entire CSV
+    const staffHeaderIndices: Array<{ index: number; staffName: string }> = [];
+    for (let i = 0; i < parseResult.data.length; i++) {
       const row = parseResult.data[i];
-
-      // ========================================================================
-      // STEP 1: Detect staff header rows
-      // ========================================================================
       if (isStaffHeaderRow(row)) {
-        // This is a staff header row
-        currentStaffName = (row[0] || '').trim();
-        insideStaffBlock = true;
-        continue; // Do not treat as a sale
-      }
-
-      // ========================================================================
-      // STEP 2: Detect product header row inside staff block
-      // ========================================================================
-      if (insideStaffBlock && isProductHeaderRow(row)) {
-        // Update column indexes from this header row
-        nameIndex = -1;
-        volumeIndex = -1;
-
-        for (let j = 0; j < row.length; j++) {
-          const cell = String(row[j] || '').trim();
-          const lowerCell = cell.toLowerCase();
-
-          // Find nameIndex: cell exactly matches "Name" (case-insensitive)
-          if (nameIndex === -1 && lowerCell === 'name') {
-            nameIndex = j;
-          }
-
-          // Find volumeIndex: cell includes "volume" and "store" but not "online"
-          if (
-            volumeIndex === -1 &&
-            lowerCell.includes('volume') &&
-            lowerCell.includes('store') &&
-            !lowerCell.includes('online')
-          ) {
-            volumeIndex = j;
-          }
-        }
-
-        // If we couldn't find the columns, exit staff block
-        if (nameIndex === -1 || volumeIndex === -1) {
-          insideStaffBlock = false;
-          currentStaffName = null;
-        }
-
-        continue; // Do not insert anything for header row
-      }
-
-      // ========================================================================
-      // STEP 3: End staff block conditions
-      // ========================================================================
-      // If we hit self-serve or empty rows outside a staff block, end it
-      const firstCell = (row[0] || '').trim();
-      if (!insideStaffBlock) {
-        // Already outside staff block, check if we should start a new one
-        // (handled above in STEP 1)
-      } else {
-        // Inside staff block - check for end conditions
-        if (!firstCell || /^self-serve$/i.test(firstCell)) {
-          insideStaffBlock = false;
-          currentStaffName = null;
+        const staffName = (row[0] || '').trim();
+        if (staffName) {
+          staffHeaderIndices.push({ index: i, staffName });
         }
       }
+    }
 
-      // ========================================================================
-      // STEP 4: Extract and validate name and quantity
-      // ========================================================================
-      const name = (row[nameIndex] || '').trim();
-      const volumeRaw = (row[volumeIndex] || '').trim();
+    // Find the first product header row (for location-level products)
+    let firstHeaderRowIndex = -1;
+    let firstHeaderRow: string[] | null = null;
+    let firstHeaderIndices: { nameIndex: number; volumeIndex: number } | null = null;
+
+    for (let i = 0; i < parseResult.data.length; i++) {
+      const row = parseResult.data[i];
+      if (isProductHeaderRow(row)) {
+        firstHeaderRowIndex = i;
+        firstHeaderRow = row;
+        firstHeaderIndices = extractColumnIndices(row);
+        break;
+      }
+    }
+
+    if (!firstHeaderRow || !firstHeaderIndices) {
+      console.error(
+        `[parseReportCsvs] Could not find product header row with "Volume In-Store" in CSV for location ${locationId}`
+      );
+      continue; // Skip this file
+    }
+
+    // Process location-level products (rows after first header, before first staff block or end)
+    const firstStaffIndex = staffHeaderIndices.length > 0 ? staffHeaderIndices[0].index : parseResult.data.length;
+    for (let i = firstHeaderRowIndex + 1; i < firstStaffIndex; i++) {
+      const row = parseResult.data[i];
+      if (isEmptyRow(row)) continue;
+
+      const name = (row[firstHeaderIndices.nameIndex] || '').trim();
+      const volumeRaw = (row[firstHeaderIndices.volumeIndex] || '').trim();
       const hasNumericValue = volumeRaw && !Number.isNaN(Number(String(volumeRaw).replace(/[^0-9.-]/g, '')));
 
-      // If name is present but volume is empty/zero, skip this row
-      if (!hasNumericValue) {
-        continue;
-      }
+      if (!hasNumericValue) continue;
 
-      // Parse quantity from volumeIndex, stripping non-numeric characters
       const quantity = Number(String(volumeRaw).replace(/[^0-9.-]/g, ''));
-
-      // Skip if quantity <= 0 or NaN
       if (Number.isNaN(quantity) || quantity <= 0) {
         rowsSkipped_invalidQuantity++;
         continue;
       }
 
-      // ========================================================================
-      // STEP 5: Skip rows early (totals / junk)
-      // ========================================================================
-      
-      // a) Empty name
       if (!name) {
         rowsSkipped_missingName++;
         continue;
       }
 
-      // b) Self-serve rows (online)
-      if (/^self-serve$/i.test(name)) {
-        if (insideStaffBlock) {
-          insideStaffBlock = false;
-          currentStaffName = null;
-        }
+      // Skip self-serve and totals
+      if (/^self-serve$/i.test(name) || /^(total|grand total)/i.test(name)) {
         continue;
       }
 
-      // c) Totals / summary lines (like "Total Sales - Arcade", "Grand Total")
-      if (/^(total|grand total)/i.test(name)) {
-        continue;
-      }
-
-      // ========================================================================
-      // STEP 6: Try to match a product rule
-      // ========================================================================
       const productRule = matchRuleForProduct(name);
-
       if (productRule) {
-        // PRODUCT ROW → Insert into metric_values (always)
-        const productName = name;
         metricRows.push({
           report_id: reportId,
           location_id: locationId,
-          user_id: null, // Always null - location-level only
-          product_name: productName,
-          category: productRule.category, // 'combo' | 'non_combo' | 'other'
+          user_id: null,
+          product_name: name,
+          category: productRule.category,
           arcade_group_label: productRule.arcade_group_label ?? null,
           value: quantity,
         });
         productRowsInserted++;
+      } else {
+        unmatchedProducts.add(name);
+      }
+    }
 
-        // ====================================================================
-        // STEP 7: If inside staff block, also insert into staff_metrics
-        // ====================================================================
-        if (insideStaffBlock && currentStaffName) {
+    // Process each staff block
+    for (let staffIdx = 0; staffIdx < staffHeaderIndices.length; staffIdx++) {
+      const staffHeader = staffHeaderIndices[staffIdx];
+      const staffName = staffHeader.staffName;
+      const staffStartIndex = staffHeader.index;
+
+      // Find the next product header row after this staff header
+      let productHeaderIndex = -1;
+      let productHeaderIndices: { nameIndex: number; volumeIndex: number } | null = null;
+
+      for (let i = staffStartIndex + 1; i < parseResult.data.length; i++) {
+        const row = parseResult.data[i];
+        if (isProductHeaderRow(row)) {
+          productHeaderIndex = i;
+          productHeaderIndices = extractColumnIndices(row);
+          break;
+        }
+      }
+
+      if (!productHeaderIndices) {
+        console.warn(`[parseReportCsvs] Could not find product header after staff header "${staffName}" at row ${staffStartIndex}`);
+        continue; // Skip this staff block
+      }
+
+      // Find the end of this staff block:
+      // - Next staff header row, OR
+      // - Empty row, OR
+      // - End of file
+      const nextStaffIndex = (staffIdx + 1) < staffHeaderIndices.length 
+        ? staffHeaderIndices[staffIdx + 1].index 
+        : parseResult.data.length;
+
+      let staffBlockEndIndex = nextStaffIndex;
+      for (let i = productHeaderIndex + 1; i < nextStaffIndex; i++) {
+        const row = parseResult.data[i];
+        if (isEmptyRow(row)) {
+          staffBlockEndIndex = i;
+          break;
+        }
+      }
+
+      // Process rows in this staff block
+      for (let i = productHeaderIndex + 1; i < staffBlockEndIndex; i++) {
+        const row = parseResult.data[i];
+        if (isEmptyRow(row)) continue;
+
+        const name = (row[productHeaderIndices.nameIndex] || '').trim();
+        const volumeRaw = (row[productHeaderIndices.volumeIndex] || '').trim();
+        const hasNumericValue = volumeRaw && !Number.isNaN(Number(String(volumeRaw).replace(/[^0-9.-]/g, '')));
+
+        if (!hasNumericValue) continue;
+
+        const quantity = Number(String(volumeRaw).replace(/[^0-9.-]/g, ''));
+        if (Number.isNaN(quantity) || quantity <= 0) {
+          rowsSkipped_invalidQuantity++;
+          continue;
+        }
+
+        if (!name) {
+          rowsSkipped_missingName++;
+          continue;
+        }
+
+        // Skip self-serve and totals
+        if (/^self-serve$/i.test(name) || /^(total|grand total)/i.test(name)) {
+          continue;
+        }
+
+        const productRule = matchRuleForProduct(name);
+        if (productRule) {
+          // Always insert into metric_values
+          metricRows.push({
+            report_id: reportId,
+            location_id: locationId,
+            user_id: null,
+            product_name: name,
+            category: productRule.category,
+            arcade_group_label: productRule.arcade_group_label ?? null,
+            value: quantity,
+          });
+          productRowsInserted++;
+
           // Determine category for staff_metrics
           let staffCategory: 'arcade' | 'combo' | 'non_combo' | null = null;
 
@@ -385,26 +388,27 @@ export async function parseReportCsvs(reportId: string) {
 
           // When pushing staff rows:
           if (staffCategory) {
+            // TEMPORARY DEBUG LOG
+            console.log('[staff_metrics insert]', {
+              staffName,
+              locationId,
+              category: staffCategory,
+              productName: name,
+              units: quantity,
+            });
+
             staffRows.push({
               report_id: reportId,
               location_id: locationId,
-              staff_name: currentStaffName,
+              staff_name: staffName,
               category: staffCategory,
               value: quantity,
             });
             staffRowsInserted++;
           }
+        } else {
+          unmatchedProducts.add(name);
         }
-
-        continue;
-      }
-
-      // ========================================================================
-      // STEP 8: If no product rule, treat as unmatched product
-      // ========================================================================
-      if (!productRule) {
-        unmatchedProducts.add(name);
-        continue;
       }
     }
 
