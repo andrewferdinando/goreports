@@ -154,7 +154,7 @@ export function AddProductRuleModal({ onClose, onSuccess }: AddProductRuleModalP
             >
               Cancel
             </SecondaryButton>
-            <PrimaryButton type="submit" disabled={isSubmitting}>
+            <PrimaryButton type="submit" disabled={isSubmitting} className="h-10">
               {isSubmitting ? 'Adding...' : 'Submit'}
             </PrimaryButton>
           </div>

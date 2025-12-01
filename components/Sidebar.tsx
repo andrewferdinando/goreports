@@ -19,10 +19,14 @@ export default function Sidebar() {
       </div>
       <nav className="flex-1 p-4">
         <ul className="space-y-2">
-          {navItems.map((item) => {
+          {navItems.map((item, index) => {
             const isActive = pathname.startsWith(item.href);
+            const isSettings = item.href === '/settings';
             return (
               <li key={item.href}>
+                {isSettings && index > 0 && (
+                  <div className="border-t border-[#D1D5DB] my-2"></div>
+                )}
                 <Link
                   href={item.href}
                   className={`block px-4 py-2 rounded-lg text-sm transition-colors ${

@@ -23,7 +23,7 @@ export default function SettingsPage() {
             </p>
           </div>
           <Link href="/settings/product-rules">
-            <PrimaryButton>Manage rules</PrimaryButton>
+            <PrimaryButton className="whitespace-nowrap">Manage rules</PrimaryButton>
           </Link>
         </div>
       </div>
