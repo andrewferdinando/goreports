@@ -15,7 +15,7 @@ export default function Sidebar() {
   return (
     <aside className="w-[220px] bg-white border-r border-[#D1D5DB] h-screen fixed left-0 top-0 flex flex-col">
       <div className="p-6 border-b border-[#D1D5DB]">
-        <h1 className="text-lg font-semibold text-[#0A0A0A]">Go Reports</h1>
+        <h1 className="text-lg font-semibold text-[#0A0A0A]">GO Reports</h1>
       </div>
       <nav className="flex-1 p-4">
         <ul className="space-y-2">
