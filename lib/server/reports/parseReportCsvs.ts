@@ -13,13 +13,10 @@ interface ProductRule {
   match_type: string;
 }
 
-interface CsvRow {
-  [key: string]: string;
-}
-
 /**
  * Parse all CSVs for a report and create location-level metric rows.
  * Location-level only: user_id is always null.
+ * No user creation - does not touch the users table.
  */
 export async function parseReportCsvs(reportId: string) {
   const supabase = getSupabaseServerClient();
@@ -56,11 +53,10 @@ export async function parseReportCsvs(reportId: string) {
     // Convert blob to text
     const csvText = await csvData.text();
 
-    // Parse CSV using papaparse with headers
-    const parseResult = Papa.parse<CsvRow>(csvText, {
-      header: true,
-      skipEmptyLines: false, // We'll handle blank rows ourselves
-      transformHeader: (header) => header.trim(),
+    // Parse CSV without headers - we'll find the header row manually
+    const parseResult = Papa.parse<string[]>(csvText, {
+      header: false,
+      skipEmptyLines: true,
     });
 
     if (parseResult.errors.length > 0) {
@@ -73,18 +69,59 @@ export async function parseReportCsvs(reportId: string) {
       continue;
     }
 
-    // Find the quantity column dynamically
-    // First header whose lowercased name includes "volume" and "store" but not "online"
-    const firstRow = parseResult.data[0];
-    const quantityKey = Object.keys(firstRow).find((key) => {
-      const k = key.toLowerCase();
-      return k.includes('volume') && k.includes('store') && !k.includes('online');
-    });
+    // Find the header row: first row containing a cell matching /volume\s*in-?store/i
+    let headerRowIndex = -1;
+    let headerRow: string[] | null = null;
 
-    if (!quantityKey) {
+    for (let i = 0; i < parseResult.data.length; i++) {
+      const row = parseResult.data[i];
+      const hasVolumeInStore = row.some((cell) => /volume\s*in-?store/i.test(String(cell || '').trim()));
+      if (hasVolumeInStore) {
+        headerRowIndex = i;
+        headerRow = row;
+        break;
+      }
+    }
+
+    if (!headerRow || headerRowIndex === -1) {
       console.error(
-        `[parseReportCsvs] Could not find "Volume In-Store" column in CSV for location ${locationId}. ` +
-        `Available columns: ${Object.keys(firstRow).join(', ')}`
+        `[parseReportCsvs] Could not find header row with "Volume In-Store" in CSV for location ${locationId}`
+      );
+      continue; // Skip this file
+    }
+
+    // Find column indices from header row
+    let nameIndex = -1;
+    let volumeIndex = -1;
+
+    for (let i = 0; i < headerRow.length; i++) {
+      const cell = String(headerRow[i] || '').trim();
+      const lowerCell = cell.toLowerCase();
+
+      // Find nameIndex: cell exactly matches "Name" (case-insensitive)
+      if (nameIndex === -1 && lowerCell === 'name') {
+        nameIndex = i;
+      }
+
+      // Find volumeIndex: cell includes "volume" and "store" but not "online"
+      if (
+        volumeIndex === -1 &&
+        lowerCell.includes('volume') &&
+        lowerCell.includes('store') &&
+        !lowerCell.includes('online')
+      ) {
+        volumeIndex = i;
+      }
+    }
+
+    if (nameIndex === -1) {
+      console.error(`[parseReportCsvs] Could not find "Name" column in header for location ${locationId}`);
+      continue; // Skip this file
+    }
+
+    if (volumeIndex === -1) {
+      console.error(
+        `[parseReportCsvs] Could not find "Volume In-Store" column in header for location ${locationId}`
       );
       continue; // Skip this file
     }
@@ -106,7 +143,7 @@ export async function parseReportCsvs(reportId: string) {
       continue; // Skip this file
     }
 
-    // Build lookup function for product matching
+    // Build lookup function for product matching (exact, case-insensitive)
     const matchRuleForProduct = (productName: string): ProductRule | null => {
       const target = productName.trim().toLowerCase();
       // Try product_name first, fallback to product_pattern for backward compatibility
@@ -120,11 +157,11 @@ export async function parseReportCsvs(reportId: string) {
       );
     };
 
-    // Process all rows after the first header
+    // Process rows after the header row
     const metricRows: Array<{
       report_id: string;
       location_id: string;
-      user_id: null; // Always null for location-level rows
+      user_id: null; // Always null - location-level only
       product_name: string;
       category: string;
       arcade_group_label: string | null;
@@ -133,21 +170,21 @@ export async function parseReportCsvs(reportId: string) {
 
     const unmatchedProducts = new Set<string>();
 
-    // Numeric fields to check for staff name rows
-    const otherNumericFields = ['Volume Online', 'Sales In-Store', 'Sales Online', 'Discounts', 'Subtotal', 'Tax', 'Total'];
+    // Iterate rows after the header row
+    for (let i = headerRowIndex + 1; i < parseResult.data.length; i++) {
+      const row = parseResult.data[i];
 
-    for (const row of parseResult.data) {
-      // Extract product name from 'Name' column
-      const rawName = (row['Name'] ?? '').trim();
+      // Extract name from nameIndex
+      const name = (row[nameIndex] || '').trim();
 
-      // Skip blank name rows
-      if (!rawName) {
+      // Skip rows where name is empty
+      if (!name) {
         continue;
       }
 
-      const lowerName = rawName.toLowerCase();
+      const lowerName = name.toLowerCase();
 
-      // Skip totals / section headers
+      // Skip rows where name is "Self-serve" or starts with "Total " or "Grand Total"
       if (
         lowerName === 'self-serve' ||
         lowerName.startsWith('total ') ||
@@ -157,31 +194,26 @@ export async function parseReportCsvs(reportId: string) {
         continue;
       }
 
-      // Extract quantity from Volume In-Store column
-      const quantityRaw = row[quantityKey];
-      const quantity =
-        quantityRaw === null || quantityRaw === undefined
-          ? NaN
-          : Number(String(quantityRaw).replace(/[^0-9.-]/g, ''));
+      // Check if this looks like a "staff label" row: name present but no numeric values in other cells
+      // A staff label row would have name but empty/zero values in numeric columns
+      const volumeRaw = (row[volumeIndex] || '').trim();
+      const hasNumericValue = volumeRaw && !Number.isNaN(Number(String(volumeRaw).replace(/[^0-9.-]/g, '')));
 
-      // Check if this is a staff name row: name present but all numeric cells empty
-      const allNumericEmpty = otherNumericFields.every((k) => {
-        const val = row[k];
-        return val === null || val === undefined || String(val).trim() === '';
-      });
-
-      if (allNumericEmpty && (quantityRaw === '' || quantityRaw === undefined || quantityRaw === null)) {
-        // This is a staff section header like "Milan Hay" – ignore it
+      // If name is present but volume is empty/zero, this is likely a staff label row - skip it
+      if (!hasNumericValue) {
         continue;
       }
 
-      // Skip rows with invalid quantity
+      // Parse quantity from volumeIndex, stripping non-numeric characters
+      const quantity = Number(String(volumeRaw).replace(/[^0-9.-]/g, ''));
+
+      // Skip if quantity <= 0 or NaN
       if (Number.isNaN(quantity) || quantity <= 0) {
         continue;
       }
 
       // At this stage we have a valid product row
-      const productName = rawName;
+      const productName = name;
       const rule = matchRuleForProduct(productName);
 
       if (!rule) {
@@ -193,7 +225,7 @@ export async function parseReportCsvs(reportId: string) {
       metricRows.push({
         report_id: reportId,
         location_id: locationId,
-        user_id: null, // Location-level only
+        user_id: null, // Always null - location-level only
         product_name: productName,
         category: rule.category, // 'combo' | 'non_combo' | 'other'
         arcade_group_label: rule.arcade_group_label ?? null,
