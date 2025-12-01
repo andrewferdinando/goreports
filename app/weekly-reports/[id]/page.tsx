@@ -9,8 +9,8 @@ import {
   getArcadeSales,
   getIndividualArcade,
   getLocationComboByVenue,
-  getIndividualComboPercent,
 } from '@/lib/server/reports/metrics';
+import { getIndividualSalesStats } from '@/lib/server/reports/getIndividualSalesStats';
 import { getSupabaseServerClient } from '@/lib/supabaseServer';
 
 interface WeeklyReportDetailPageProps {
@@ -40,11 +40,11 @@ export default async function WeeklyReportDetailPage({
   const reportName = report.label as string;
 
   // Fetch all metrics data
-  const [arcadeSales, individualArcade, locationCombo, individualCombo] = await Promise.all([
+  const [arcadeSales, individualArcade, locationCombo, individualSales] = await Promise.all([
     getArcadeSales(reportId),
     getIndividualArcade(reportId),
     getLocationComboByVenue(reportId),
-    getIndividualComboPercent(reportId),
+    getIndividualSalesStats(reportId),
   ]);
 
   const tabs = [
@@ -66,7 +66,7 @@ export default async function WeeklyReportDetailPage({
     {
       id: "individual-sales",
       label: "Individual Sales",
-      content: <IndividualSalesTab data={individualCombo} />,
+      content: <IndividualSalesTab data={individualSales} />,
     },
   ];
 
