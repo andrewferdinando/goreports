@@ -186,6 +186,7 @@ export async function parseReportCsvs(reportId: string) {
       category: string;
       arcade_group_label: string | null;
       value: number;
+      user_name: string | null; // Staff name if inside staff block, null for location-level
     }> = [];
 
     const staffRows: Array<{
@@ -275,6 +276,7 @@ export async function parseReportCsvs(reportId: string) {
           category: productRule.category,
           arcade_group_label: productRule.arcade_group_label ?? null,
           value: quantity,
+          user_name: null, // Location-level product, no staff name
         });
         productRowsInserted++;
       } else {
@@ -361,6 +363,7 @@ export async function parseReportCsvs(reportId: string) {
             category: productRule.category,
             arcade_group_label: productRule.arcade_group_label ?? null,
             value: quantity,
+            user_name: staffName ?? null, // Use same staffName as staff_metrics.staff_name
           });
           productRowsInserted++;
 
