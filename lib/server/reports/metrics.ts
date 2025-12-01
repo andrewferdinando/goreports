@@ -211,18 +211,23 @@ export async function getIndividualArcade(reportId: string): Promise<IndividualA
 // ============================================================================
 // Combo Sales Tab
 // ============================================================================
-// Includes: category = 'combo' AND arcade_group_label IS NULL
-// Groups by: location_id
+// Business rules:
+// - combo_total = SUM(value) where category = 'combo'
+// - non_combo_total = SUM(value) where category = 'non_combo'
+// - total_sales = combo_total + non_combo_total
+// - combo_rate_pct = combo_total / NULLIF(total_sales, 0)
+// - arcade and other categories are excluded from denominator
 
 export async function getLocationComboByVenue(reportId: string): Promise<LocationComboData[]> {
   const supabase = getSupabaseServerClient();
 
-  // Get combo items (arcade_group_label IS NULL) and non_combo items
+  // Query metric_values for combo and non_combo categories only
+  // Exclude arcade and other categories
   const { data: metricData, error: metricError } = await supabase
     .from('metric_values')
     .select('location_id, category, value')
     .eq('report_id', reportId)
-    .or('category.eq.combo,category.eq.non_combo');
+    .in('category', ['combo', 'non_combo']);
 
   if (metricError) {
     throw new Error(`Failed to fetch metric values: ${metricError.message}`);
@@ -239,7 +244,7 @@ export async function getLocationComboByVenue(reportId: string): Promise<Locatio
     return [];
   }
 
-  // Fetch locations
+  // Fetch locations to get venue names
   const { data: locations, error: locationsError } = await supabase
     .from('locations')
     .select('id, name, code')
@@ -258,67 +263,45 @@ export async function getLocationComboByVenue(reportId: string): Promise<Locatio
     });
   }
 
-  // Group by location
-  // For combo: only count rows where category = 'combo' AND arcade_group_label IS NULL
-  // For non_combo: count all non_combo rows
+  // Group by location_id and sum values by category
   const locationDataMap = new Map<string, { combo: number; nonCombo: number }>();
 
-  // First, get all combo rows with null arcade_group_label
-  const { data: comboData, error: comboError } = await supabase
-    .from('metric_values')
-    .select('location_id, value')
-    .eq('report_id', reportId)
-    .eq('category', 'combo')
-    .is('arcade_group_label', null);
-
-  if (comboError) {
-    throw new Error(`Failed to fetch combo data: ${comboError.message}`);
-  }
-
-  // Initialize all locations
-  for (const locationId of locationIds) {
-    locationDataMap.set(locationId, { combo: 0, nonCombo: 0 });
-  }
-
-  // Sum combo values (arcade_group_label IS NULL)
-  for (const row of comboData || []) {
-    const locationId = row.location_id as string;
-    if (!locationId) continue;
-
-    const qty = (row.value as number) || 0;
-    const locationData = locationDataMap.get(locationId);
-    if (locationData) {
-      locationData.combo += qty;
-    }
-  }
-
-  // Sum non_combo values
   for (const row of metricData) {
     const locationId = row.location_id as string;
     if (!locationId) continue;
 
     const category = row.category as string;
-    const qty = (row.value as number) || 0;
+    const value = (row.value as number) || 0;
 
-    if (category === 'non_combo') {
-      const locationData = locationDataMap.get(locationId);
-      if (locationData) {
-        locationData.nonCombo += qty;
-      }
+    // Initialize location if needed
+    if (!locationDataMap.has(locationId)) {
+      locationDataMap.set(locationId, { combo: 0, nonCombo: 0 });
+    }
+
+    const locationData = locationDataMap.get(locationId)!;
+
+    if (category === 'combo') {
+      locationData.combo += value;
+    } else if (category === 'non_combo') {
+      locationData.nonCombo += value;
     }
   }
 
-  // Convert to array and calculate percentages
+  // Convert to array and calculate combo_rate_pct
   const result: LocationComboData[] = Array.from(locationDataMap.entries()).map(([locationId, data]) => {
     const location = locationMap.get(locationId);
-    const total = data.combo + data.nonCombo;
-    const comboPercent = total > 0 ? Math.round((data.combo / total) * 100) : 0;
+    const comboTotal = data.combo;
+    const nonComboTotal = data.nonCombo;
+    const totalSales = comboTotal + nonComboTotal;
+    
+    // combo_rate_pct = combo_total / NULLIF(total_sales, 0)
+    const comboPercent = totalSales > 0 ? Math.round((comboTotal / totalSales) * 100) : 0;
 
     return {
       locationName: location?.name || 'Unknown',
       locationCode: location?.code || '',
-      combo: data.combo,
-      nonCombo: data.nonCombo,
+      combo: comboTotal,
+      nonCombo: nonComboTotal,
       comboPercent,
       rank: 0, // Will be set after sorting
     };
