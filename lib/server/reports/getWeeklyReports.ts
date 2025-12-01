@@ -17,7 +17,7 @@ export async function getWeeklyReports(): Promise<WeeklyReport[]> {
     .from('reports')
     .select('id, period_start, created_at, label')
     .eq('type', 'weekly')
-    .order('period_start', { ascending: false, nullsLast: true });
+    .order('period_start', { ascending: false, nullsFirst: false });
 
   if (error) {
     console.error('Failed to fetch weekly reports:', error);
