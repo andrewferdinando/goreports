@@ -14,8 +14,9 @@ interface ProductRule {
 }
 
 /**
- * Parse all CSVs for a report and create location-level metric rows.
- * Location-level only: user_id is always null.
+ * Parse all CSVs for a report and create:
+ * - Location-level metric rows in metric_values (for product rows)
+ * - Staff-level metric rows in staff_metrics (for staff rows)
  * No user creation - does not touch the users table.
  */
 export async function parseReportCsvs(reportId: string) {
@@ -93,6 +94,7 @@ export async function parseReportCsvs(reportId: string) {
     // Find column indices from header row
     let nameIndex = -1;
     let volumeIndex = -1;
+    let productIndex = -1; // Look for "Product" column for staff rows
 
     for (let i = 0; i < headerRow.length; i++) {
       const cell = String(headerRow[i] || '').trim();
@@ -101,6 +103,11 @@ export async function parseReportCsvs(reportId: string) {
       // Find nameIndex: cell exactly matches "Name" (case-insensitive)
       if (nameIndex === -1 && lowerCell === 'name') {
         nameIndex = i;
+      }
+
+      // Find productIndex: cell matches "Product" (case-insensitive)
+      if (productIndex === -1 && lowerCell === 'product') {
+        productIndex = i;
       }
 
       // Find volumeIndex: cell includes "volume" and "store" but not "online"
@@ -168,7 +175,22 @@ export async function parseReportCsvs(reportId: string) {
       value: number;
     }> = [];
 
+    const staffRows: Array<{
+      report_id: string;
+      location_id: string;
+      staff_name: string;
+      category: string;
+      value: number;
+    }> = [];
+
+    // Tracking counters for logging
+    let productRowsInserted = 0;
+    let staffRowsInserted = 0;
+    let staffRowsSkipped_noRuleMatch = 0;
+    let rowsSkipped_invalidQuantity = 0;
+    let rowsSkipped_missingName = 0;
     const unmatchedProducts = new Set<string>();
+    const unmatchedStaff = new Set<string>();
 
     // Iterate rows after the header row
     for (let i = headerRowIndex + 1; i < parseResult.data.length; i++) {
@@ -179,6 +201,7 @@ export async function parseReportCsvs(reportId: string) {
 
       // Skip rows where name is empty
       if (!name) {
+        rowsSkipped_missingName++;
         continue;
       }
 
@@ -209,31 +232,92 @@ export async function parseReportCsvs(reportId: string) {
 
       // Skip if quantity <= 0 or NaN
       if (Number.isNaN(quantity) || quantity <= 0) {
+        rowsSkipped_invalidQuantity++;
         continue;
       }
 
-      // At this stage we have a valid product row
-      const productName = name;
-      const rule = matchRuleForProduct(productName);
+      // ========================================================================
+      // DISTINGUISH STAFF ROWS VS PRODUCT ROWS
+      // ========================================================================
+      // A row is a PRODUCT if: name matches a product_rule
+      // A row is a STAFF if: name does NOT match a product_rule AND has valid quantity
+      const productRule = matchRuleForProduct(name);
 
-      if (!rule) {
-        unmatchedProducts.add(productName);
-        continue;
+      if (productRule) {
+        // ====================================================================
+        // PRODUCT ROW → Insert into metric_values
+        // ====================================================================
+        const productName = name;
+        metricRows.push({
+          report_id: reportId,
+          location_id: locationId,
+          user_id: null, // Always null - location-level only
+          product_name: productName,
+          category: productRule.category, // 'combo' | 'non_combo' | 'other'
+          arcade_group_label: productRule.arcade_group_label ?? null,
+          value: quantity,
+        });
+        productRowsInserted++;
+      } else {
+        // ====================================================================
+        // STAFF ROW → Insert into staff_metrics
+        // ====================================================================
+        // For staff rows, we need to determine the category from the product they sold
+        // Look for product name in "Product" column
+        // If Product column doesn't exist or is empty, we can't determine category → skip
+        const productName = productIndex >= 0 ? (row[productIndex] || '').trim() : '';
+        
+        if (!productName) {
+          // No product name found → can't determine category → skip this staff row
+          staffRowsSkipped_noRuleMatch++;
+          unmatchedStaff.add(`${name} (no product column)`);
+          continue;
+        }
+        
+        // Match the product against product_rules to get category
+        const staffProductRule = matchRuleForProduct(productName);
+
+        if (!staffProductRule) {
+          // No matching rule for the product → skip this staff row
+          staffRowsSkipped_noRuleMatch++;
+          unmatchedStaff.add(`${name} (product: ${productName})`);
+          continue;
+        }
+
+        // Determine category based on the matched rule
+        // combo → category = 'combo'
+        // non_combo → category = 'non_combo'
+        // arcade (arcade_group_label IS NOT NULL) → category = 'arcade'
+        let staffCategory: 'combo' | 'non_combo' | 'arcade';
+        
+        if (staffProductRule.arcade_group_label !== null && staffProductRule.arcade_group_label !== undefined) {
+          // Has arcade_group_label → category = 'arcade'
+          staffCategory = 'arcade';
+        } else if (staffProductRule.category === 'combo') {
+          staffCategory = 'combo';
+        } else if (staffProductRule.category === 'non_combo') {
+          staffCategory = 'non_combo';
+        } else {
+          // For 'other' category, we need to check if it should be arcade
+          // If it has arcade_group_label, it's arcade, otherwise skip
+          staffRowsSkipped_noRuleMatch++;
+          unmatchedStaff.add(`${name} (product: ${productName}, category: ${staffProductRule.category})`);
+          continue;
+        }
+
+        // Insert staff row into staff_metrics
+        staffRows.push({
+          report_id: reportId,
+          location_id: locationId,
+          staff_name: name, // Staff member's name from Name column
+          category: staffCategory,
+          value: quantity, // Volume In-Store
+        });
+        staffRowsInserted++;
       }
-
-      // Create location-level metric row
-      metricRows.push({
-        report_id: reportId,
-        location_id: locationId,
-        user_id: null, // Always null - location-level only
-        product_name: productName,
-        category: rule.category, // 'combo' | 'non_combo' | 'other'
-        arcade_group_label: rule.arcade_group_label ?? null,
-        value: quantity,
-      });
     }
 
-    // Insert metric rows if any were created
+    // Insert metric rows (products) if any were created
     if (metricRows.length > 0) {
       const { error: insertError } = await supabase.from('metric_values').insert(metricRows);
 
@@ -243,18 +327,34 @@ export async function parseReportCsvs(reportId: string) {
       }
     }
 
+    // Insert staff rows if any were created
+    if (staffRows.length > 0) {
+      const { error: insertError } = await supabase.from('staff_metrics').insert(staffRows);
+
+      if (insertError) {
+        console.error(`[parseReportCsvs] Failed to insert staff metrics for location ${locationId}:`, insertError);
+        throw new Error(`Failed to insert staff metrics: ${insertError.message}`);
+      }
+    }
+
     // Log summary
     console.info('[parseReportCsvs] summary', {
       locationId,
       reportId,
-      insertedMetricCount: metricRows.length,
+      productRowsInserted,
+      staffRowsInserted,
+      staffRowsSkipped_noRuleMatch,
+      rowsSkipped_invalidQuantity,
+      rowsSkipped_missingName,
       unmatchedProducts: Array.from(unmatchedProducts).sort(),
+      unmatchedStaff: Array.from(unmatchedStaff).sort(),
     });
 
-    if (metricRows.length === 0) {
+    if (metricRows.length === 0 && staffRows.length === 0) {
       console.warn(
-        `[parseReportCsvs] No valid metric rows created for location ${locationId}. ` +
-        `Unmatched products: ${Array.from(unmatchedProducts).join(', ')}`
+        `[parseReportCsvs] No valid rows created for location ${locationId}. ` +
+        `Unmatched products: ${Array.from(unmatchedProducts).join(', ')}. ` +
+        `Unmatched staff: ${Array.from(unmatchedStaff).join(', ')}`
       );
       // Don't throw - report page should still load with "No data available"
     }
