@@ -34,7 +34,7 @@ function looksLikeStaffName(name: string): boolean {
 /**
  * Parse all CSVs for a report and create:
  * - Location-level metric rows in metric_values (for product rows)
- * - Staff-level metric rows in staff_metrics (for staff rows)
+ * - Staff-level metric rows in staff_metrics (for staff product rows)
  * No user creation - does not touch the users table.
  */
 export async function parseReportCsvs(reportId: string) {
@@ -200,25 +200,107 @@ export async function parseReportCsvs(reportId: string) {
     let staffRowsInserted = 0;
     let rowsSkipped_invalidQuantity = 0;
     let rowsSkipped_missingName = 0;
-    const unmatchedRows: Array<{ name: string; quantity: number; locationId: string; reportId: string }> = [];
+    const unmatchedProducts = new Set<string>();
 
-    // Iterate rows after the header row
+    // Staff block tracking
+    let currentStaffName: string | null = null;
+    let insideStaffBlock = false;
+
+    // Helper function to detect staff header rows
+    // A row is a staff header if: row[0] is non-empty AND every other cell is empty
+    const isStaffHeaderRow = (row: string[]): boolean => {
+      if (row.length === 0) return false;
+      const firstCell = (row[0] || '').trim();
+      if (!firstCell) return false;
+      
+      // Check if all other cells are empty
+      for (let i = 1; i < row.length; i++) {
+        const cell = (row[i] || '').trim();
+        if (cell) return false;
+      }
+      return true;
+    };
+
+    // Helper function to check if a row is a product header row
+    const isProductHeaderRow = (row: string[]): boolean => {
+      return row.some((cell) => /volume\s*in-?store/i.test(String(cell || '').trim()));
+    };
+
+    // Iterate rows after the initial header row
     for (let i = headerRowIndex + 1; i < parseResult.data.length; i++) {
       const row = parseResult.data[i];
 
-      // Extract and normalize name from nameIndex
-      const name = (row[nameIndex] || '').trim();
+      // ========================================================================
+      // STEP 1: Detect staff header rows
+      // ========================================================================
+      if (isStaffHeaderRow(row)) {
+        // This is a staff header row
+        currentStaffName = (row[0] || '').trim();
+        insideStaffBlock = true;
+        continue; // Do not treat as a sale
+      }
 
       // ========================================================================
-      // STEP 1: Pre-conditions - Extract and validate name and quantity
+      // STEP 2: Detect product header row inside staff block
       // ========================================================================
-      
-      // Check if this looks like a "staff label" row: name present but no numeric values in other cells
-      // A staff label row would have name but empty/zero values in numeric columns
+      if (insideStaffBlock && isProductHeaderRow(row)) {
+        // Update column indexes from this header row
+        nameIndex = -1;
+        volumeIndex = -1;
+
+        for (let j = 0; j < row.length; j++) {
+          const cell = String(row[j] || '').trim();
+          const lowerCell = cell.toLowerCase();
+
+          // Find nameIndex: cell exactly matches "Name" (case-insensitive)
+          if (nameIndex === -1 && lowerCell === 'name') {
+            nameIndex = j;
+          }
+
+          // Find volumeIndex: cell includes "volume" and "store" but not "online"
+          if (
+            volumeIndex === -1 &&
+            lowerCell.includes('volume') &&
+            lowerCell.includes('store') &&
+            !lowerCell.includes('online')
+          ) {
+            volumeIndex = j;
+          }
+        }
+
+        // If we couldn't find the columns, exit staff block
+        if (nameIndex === -1 || volumeIndex === -1) {
+          insideStaffBlock = false;
+          currentStaffName = null;
+        }
+
+        continue; // Do not insert anything for header row
+      }
+
+      // ========================================================================
+      // STEP 3: End staff block conditions
+      // ========================================================================
+      // If we hit self-serve or empty rows outside a staff block, end it
+      const firstCell = (row[0] || '').trim();
+      if (!insideStaffBlock) {
+        // Already outside staff block, check if we should start a new one
+        // (handled above in STEP 1)
+      } else {
+        // Inside staff block - check for end conditions
+        if (!firstCell || /^self-serve$/i.test(firstCell)) {
+          insideStaffBlock = false;
+          currentStaffName = null;
+        }
+      }
+
+      // ========================================================================
+      // STEP 4: Extract and validate name and quantity
+      // ========================================================================
+      const name = (row[nameIndex] || '').trim();
       const volumeRaw = (row[volumeIndex] || '').trim();
       const hasNumericValue = volumeRaw && !Number.isNaN(Number(String(volumeRaw).replace(/[^0-9.-]/g, '')));
 
-      // If name is present but volume is empty/zero, this is likely a staff label row - skip it
+      // If name is present but volume is empty/zero, skip this row
       if (!hasNumericValue) {
         continue;
       }
@@ -233,7 +315,7 @@ export async function parseReportCsvs(reportId: string) {
       }
 
       // ========================================================================
-      // STEP 2: Skip rows early (totals / junk)
+      // STEP 5: Skip rows early (totals / junk)
       // ========================================================================
       
       // a) Empty name
@@ -244,6 +326,10 @@ export async function parseReportCsvs(reportId: string) {
 
       // b) Self-serve rows (online)
       if (/^self-serve$/i.test(name)) {
+        if (insideStaffBlock) {
+          insideStaffBlock = false;
+          currentStaffName = null;
+        }
         continue;
       }
 
@@ -253,12 +339,12 @@ export async function parseReportCsvs(reportId: string) {
       }
 
       // ========================================================================
-      // STEP 3: Try to match a product rule
+      // STEP 6: Try to match a product rule
       // ========================================================================
       const productRule = matchRuleForProduct(name);
 
       if (productRule) {
-        // PRODUCT ROW → Insert into metric_values
+        // PRODUCT ROW → Insert into metric_values (always)
         const productName = name;
         metricRows.push({
           report_id: reportId,
@@ -270,28 +356,46 @@ export async function parseReportCsvs(reportId: string) {
           value: quantity,
         });
         productRowsInserted++;
+
+        // ====================================================================
+        // STEP 7: If inside staff block, also insert into staff_metrics
+        // ====================================================================
+        if (insideStaffBlock && currentStaffName) {
+          // Determine category for staff_metrics
+          // If arcade_group_label IS NOT NULL → category = 'arcade'
+          // Otherwise use rule.category (combo or non_combo)
+          let staffCategory: string | null = null;
+          if (productRule.arcade_group_label !== null && productRule.arcade_group_label !== undefined) {
+            staffCategory = 'arcade';
+          } else {
+            // Use rule.category, but only allow 'combo' or 'non_combo' for staff_metrics
+            if (productRule.category === 'combo' || productRule.category === 'non_combo') {
+              staffCategory = productRule.category;
+            }
+            // Skip 'other' category for staff_metrics (but metric_values already inserted)
+          }
+
+          // Only insert if we determined a valid category
+          if (staffCategory) {
+            staffRows.push({
+              report_id: reportId,
+              location_id: locationId,
+              staff_name: currentStaffName,
+              category: staffCategory,
+              value: quantity,
+            });
+            staffRowsInserted++;
+          }
+        }
+
         continue;
       }
 
       // ========================================================================
-      // STEP 4: If no product rule, decide if it's a staff row
+      // STEP 8: If no product rule, treat as unmatched product
       // ========================================================================
       if (!productRule) {
-        if (looksLikeStaffName(name)) {
-          // STAFF ROW → push to staffRows
-          staffRows.push({
-            report_id: reportId,
-            location_id: locationId,
-            staff_name: name,
-            category: 'non_combo', // TEMP default, see below
-            value: quantity,
-          });
-          staffRowsInserted++;
-          continue;
-        }
-
-        // Otherwise it's an unmatched row
-        unmatchedRows.push({ name, quantity, locationId, reportId });
+        unmatchedProducts.add(name);
         continue;
       }
     }
@@ -324,14 +428,13 @@ export async function parseReportCsvs(reportId: string) {
       staffRowsInserted,
       rowsSkipped_invalidQuantity,
       rowsSkipped_missingName,
-      unmatchedRowsCount: unmatchedRows.length,
-      unmatchedRows: unmatchedRows.map((r) => r.name).sort(),
+      unmatchedProducts: Array.from(unmatchedProducts).sort(),
     });
 
-    if (metricRows.length === 0 && staffRows.length === 0) {
+    if (metricRows.length === 0) {
       console.warn(
-        `[parseReportCsvs] No valid rows created for location ${locationId}. ` +
-        `Unmatched rows: ${unmatchedRows.map((r) => r.name).join(', ')}`
+        `[parseReportCsvs] No valid metric rows created for location ${locationId}. ` +
+        `Unmatched products: ${Array.from(unmatchedProducts).join(', ')}`
       );
       // Don't throw - report page should still load with "No data available"
     }
