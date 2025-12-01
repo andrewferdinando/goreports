@@ -26,11 +26,11 @@ const getRankBadge = (rank: number) => {
 
 export default function ComboSalesTab({ data }: ComboSalesTabProps) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5">
-      <h2 className="text-2xl font-semibold text-[#0A0A0A] mb-6">
+    <div className="bg-white rounded-xl border border-gray-200 p-4 lg:p-5">
+      <h2 className="text-xl lg:text-2xl font-semibold text-[#0A0A0A] mb-4 lg:mb-6">
         Combo Sales by Venue
       </h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
         {data.length > 0 ? (
           data.map((venue) => {
             const total = venue.combo + venue.nonCombo;
@@ -43,7 +43,7 @@ export default function ComboSalesTab({ data }: ComboSalesTabProps) {
             return (
               <div
                 key={venue.locationCode}
-                className="bg-gray-50 rounded-xl border border-gray-200 p-5"
+                className="bg-gray-50 rounded-xl border border-gray-200 p-4 lg:p-5"
               >
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-[#0A0A0A]">
@@ -99,7 +99,7 @@ export default function ComboSalesTab({ data }: ComboSalesTabProps) {
             );
           })
         ) : (
-          <p className="text-sm text-[#6B7280]">No data available</p>
+          <p className="text-xs lg:text-sm text-[#6B7280]">No data available</p>
         )}
       </div>
     </div>

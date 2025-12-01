@@ -46,13 +46,13 @@ export function ReportRow({ reportId, reportName, createdDate, onDelete }: Repor
         onClick={() => router.push(`/monthly-reports/${reportId}`)}
         className="hover:bg-gray-50 hover:shadow-md cursor-pointer transition-all"
       >
-        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[#0A0A0A]">
+        <td className="px-2 py-2 lg:px-6 lg:py-4 whitespace-nowrap text-xs lg:text-sm font-medium text-[#0A0A0A]">
           {reportName}
         </td>
-        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#374151]">
+        <td className="px-2 py-2 lg:px-6 lg:py-4 whitespace-nowrap text-xs lg:text-sm text-[#374151]">
           {createdDate}
         </td>
-        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#374151]">
+        <td className="px-2 py-2 lg:px-6 lg:py-4 whitespace-nowrap text-xs lg:text-sm text-[#374151]">
           <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
             <SecondaryButton
               onClick={handleViewUploads}

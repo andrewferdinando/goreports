@@ -15,8 +15,8 @@ export function CsvUploadFields() {
   return (
     <div className="space-y-4">
       {/* Auckland */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex flex-col">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+        <div className="flex flex-col flex-1 min-w-0">
           <span className="text-sm font-medium text-[#374151]">
             Auckland CSV
           </span>
@@ -24,14 +24,15 @@ export function CsvUploadFields() {
             Upload the weekly CSV for Auckland
           </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
           <SecondaryButton
             type="button"
             onClick={() => aklInputRef.current?.click()}
+            className="flex-shrink-0"
           >
             + Add CSV
           </SecondaryButton>
-          <span className="text-xs text-[#6B7280]">
+          <span className="text-xs text-[#6B7280] truncate">
             {aklFileName ?? 'No file selected'}
           </span>
         </div>
@@ -49,8 +50,8 @@ export function CsvUploadFields() {
       </div>
 
       {/* Christchurch */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex flex-col">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+        <div className="flex flex-col flex-1 min-w-0">
           <span className="text-sm font-medium text-[#374151]">
             Christchurch CSV
           </span>
@@ -58,14 +59,15 @@ export function CsvUploadFields() {
             Upload the weekly CSV for Christchurch
           </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
           <SecondaryButton
             type="button"
             onClick={() => chcInputRef.current?.click()}
+            className="flex-shrink-0"
           >
             + Add CSV
           </SecondaryButton>
-          <span className="text-xs text-[#6B7280]">
+          <span className="text-xs text-[#6B7280] truncate">
             {chcFileName ?? 'No file selected'}
           </span>
         </div>
@@ -83,8 +85,8 @@ export function CsvUploadFields() {
       </div>
 
       {/* Queenstown */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex flex-col">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+        <div className="flex flex-col flex-1 min-w-0">
           <span className="text-sm font-medium text-[#374151]">
             Queenstown CSV
           </span>
@@ -92,14 +94,15 @@ export function CsvUploadFields() {
             Upload the weekly CSV for Queenstown
           </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
           <SecondaryButton
             type="button"
             onClick={() => qtInputRef.current?.click()}
+            className="flex-shrink-0"
           >
             + Add CSV
           </SecondaryButton>
-          <span className="text-xs text-[#6B7280]">
+          <span className="text-xs text-[#6B7280] truncate">
             {qtFileName ?? 'No file selected'}
           </span>
         </div>

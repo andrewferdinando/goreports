@@ -114,13 +114,13 @@ export default function UsersPage() {
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
         {isLoading && (
-          <div className="p-6 text-center text-sm text-[#374151]">
+          <div className="p-4 lg:p-6 text-center text-xs lg:text-sm text-[#374151]">
             Loading users...
           </div>
         )}
 
         {error && (
-          <div className="p-6 text-center text-sm text-red-600">
+          <div className="p-4 lg:p-6 text-center text-xs lg:text-sm text-red-600">
             {error}
           </div>
         )}
@@ -128,39 +128,41 @@ export default function UsersPage() {
         {!isLoading && !error && (
           <>
             {filteredUsers.length === 0 ? (
-              <div className="p-6 text-center text-sm text-[#374151]">
+              <div className="p-4 lg:p-6 text-center text-xs lg:text-sm text-[#374151]">
                 {searchText ? 'No users found matching your search.' : 'No users found.'}
               </div>
             ) : (
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-[#D1D5DB]">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
-                      User
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
-                      Show in individual reports
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-[#D1D5DB]">
-                  {filteredUsers.map((user) => (
-                    <tr key={user.staff_name}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[#374151]">
-                        {user.staff_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          checked={user.include_in_individual_reports}
-                          onChange={() => handleToggle(user.staff_name, user.include_in_individual_reports)}
-                          className="h-4 w-4 text-[#6366F1] focus:ring-[#6366F1] border-gray-300 rounded"
-                        />
-                      </td>
+              <div className="w-full overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-[#D1D5DB]">
+                    <tr>
+                      <th className="px-2 py-2 lg:px-6 lg:py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
+                        User
+                      </th>
+                      <th className="px-2 py-2 lg:px-6 lg:py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
+                        Show in individual reports
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-[#D1D5DB]">
+                    {filteredUsers.map((user) => (
+                      <tr key={user.staff_name}>
+                        <td className="px-2 py-2 lg:px-6 lg:py-4 whitespace-nowrap text-xs lg:text-sm text-[#374151]">
+                          {user.staff_name}
+                        </td>
+                        <td className="px-2 py-2 lg:px-6 lg:py-4 whitespace-nowrap">
+                          <input
+                            type="checkbox"
+                            checked={user.include_in_individual_reports}
+                            onChange={() => handleToggle(user.staff_name, user.include_in_individual_reports)}
+                            className="h-4 w-4 text-[#6366F1] focus:ring-[#6366F1] border-gray-300 rounded"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </>
         )}

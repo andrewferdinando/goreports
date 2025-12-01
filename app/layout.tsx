@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import Sidebar from "@/components/Sidebar";
+import { LayoutWrapper } from "@/components/LayoutWrapper";
 
 export const metadata: Metadata = {
   title: "Go Reports",
@@ -15,14 +15,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-[#FAFAFA]">
-        <div className="flex">
-          <Sidebar />
-          <main className="flex-1 ml-[220px] min-h-screen">
-            <div className="max-w-6xl mx-auto p-8">
-              {children}
-            </div>
-          </main>
-        </div>
+        <LayoutWrapper>{children}</LayoutWrapper>
       </body>
     </html>
   );

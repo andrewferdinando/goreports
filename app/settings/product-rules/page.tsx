@@ -91,9 +91,9 @@ export default function ProductRulesPage() {
         When a new product appears in the CSV, add a rule here so the app knows whether it&apos;s a combo, non combo, arcade, or other.
       </p>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-        <div className="flex gap-4 items-end">
-          <div className="flex-1">
+      <div className="bg-white rounded-xl border border-gray-200 p-4 lg:p-6 mb-6">
+        <div className="flex flex-col lg:flex-row gap-4 items-end">
+          <div className="flex-1 w-full lg:w-auto">
             <label className="block text-sm font-medium text-[#374151] mb-1">
               Venue
             </label>
@@ -108,7 +108,7 @@ export default function ProductRulesPage() {
               <option value="Queenstown">Queenstown</option>
             </select>
           </div>
-          <div className="flex-1">
+          <div className="flex-1 w-full lg:w-auto">
             <label className="block text-sm font-medium text-[#374151] mb-1">
               Search
             </label>
@@ -125,13 +125,13 @@ export default function ProductRulesPage() {
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
         {isLoading && (
-          <div className="p-6 text-center text-sm text-[#374151]">
+          <div className="p-4 lg:p-6 text-center text-xs lg:text-sm text-[#374151]">
             Loading rules...
           </div>
         )}
 
         {error && (
-          <div className="p-6 text-center text-sm text-red-600">
+          <div className="p-4 lg:p-6 text-center text-xs lg:text-sm text-red-600">
             {error}
           </div>
         )}
@@ -139,64 +139,66 @@ export default function ProductRulesPage() {
         {!isLoading && !error && (
           <>
             {rules.length === 0 ? (
-              <div className="p-6 text-center text-sm text-[#374151]">
+              <div className="p-4 lg:p-6 text-center text-xs lg:text-sm text-[#374151]">
                 No rules found.
               </div>
             ) : (
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-[#D1D5DB]">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
-                      Venue
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
-                      Product name
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
-                      Category
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
-                      Match type
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
-                      Arcade group
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
-                      Active
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-[#D1D5DB]">
-                  {rules.map((rule) => (
-                    <tr key={rule.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[#374151]">
-                        {rule.location_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[#374151]">
-                        {rule.product_pattern}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[#374151]">
-                        {rule.category}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[#374151]">
-                        {rule.match_type}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[#374151]">
-                        {rule.arcade_group_label || '-'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[#374151]">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          rule.is_active
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {rule.is_active ? 'Yes' : 'No'}
-                        </span>
-                      </td>
+              <div className="w-full overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-[#D1D5DB]">
+                    <tr>
+                      <th className="px-2 py-2 lg:px-6 lg:py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
+                        Venue
+                      </th>
+                      <th className="px-2 py-2 lg:px-6 lg:py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
+                        Product name
+                      </th>
+                      <th className="px-2 py-2 lg:px-6 lg:py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
+                        Category
+                      </th>
+                      <th className="px-2 py-2 lg:px-6 lg:py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
+                        Match type
+                      </th>
+                      <th className="px-2 py-2 lg:px-6 lg:py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
+                        Arcade group
+                      </th>
+                      <th className="px-2 py-2 lg:px-6 lg:py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
+                        Active
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-[#D1D5DB]">
+                    {rules.map((rule) => (
+                      <tr key={rule.id}>
+                        <td className="px-2 py-2 lg:px-6 lg:py-4 whitespace-nowrap text-xs lg:text-sm text-[#374151]">
+                          {rule.location_name}
+                        </td>
+                        <td className="px-2 py-2 lg:px-6 lg:py-4 whitespace-nowrap text-xs lg:text-sm text-[#374151]">
+                          {rule.product_pattern}
+                        </td>
+                        <td className="px-2 py-2 lg:px-6 lg:py-4 whitespace-nowrap text-xs lg:text-sm text-[#374151]">
+                          {rule.category}
+                        </td>
+                        <td className="px-2 py-2 lg:px-6 lg:py-4 whitespace-nowrap text-xs lg:text-sm text-[#374151]">
+                          {rule.match_type}
+                        </td>
+                        <td className="px-2 py-2 lg:px-6 lg:py-4 whitespace-nowrap text-xs lg:text-sm text-[#374151]">
+                          {rule.arcade_group_label || '-'}
+                        </td>
+                        <td className="px-2 py-2 lg:px-6 lg:py-4 whitespace-nowrap text-xs lg:text-sm text-[#374151]">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            rule.is_active
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {rule.is_active ? 'Yes' : 'No'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </>
         )}

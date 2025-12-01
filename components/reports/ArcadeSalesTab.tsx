@@ -31,12 +31,13 @@ export default function ArcadeSalesTab({ data }: ArcadeSalesTabProps) {
   }));
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5">
-      <h2 className="text-2xl font-semibold text-[#0A0A0A] mb-6">
+    <div className="bg-white rounded-xl border border-gray-200 p-4 lg:p-5">
+      <h2 className="text-xl lg:text-2xl font-semibold text-[#0A0A0A] mb-4 lg:mb-6">
         Arcade Sales Snapshot
       </h2>
       {chartData.length > 0 ? (
-        <ResponsiveContainer width="100%" height={400}>
+        <div className="w-full overflow-x-auto">
+          <ResponsiveContainer width="100%" height={400} minWidth={300}>
           <BarChart
             data={chartData}
             margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
@@ -88,8 +89,9 @@ export default function ArcadeSalesTab({ data }: ArcadeSalesTabProps) {
             />
           </BarChart>
         </ResponsiveContainer>
+        </div>
       ) : (
-        <p className="text-sm text-[#6B7280]">No data available</p>
+        <p className="text-xs lg:text-sm text-[#6B7280]">No data available</p>
       )}
     </div>
   );

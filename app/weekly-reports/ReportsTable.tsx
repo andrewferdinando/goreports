@@ -29,24 +29,25 @@ export function ReportsTable({ reports }: ReportsTableProps) {
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-      <table className="w-full">
-        <thead className="bg-gray-50 border-b border-[#D1D5DB]">
-          <tr>
-            <th className="px-6 py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
-              Report Name
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
-              Created Date
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
-              Actions
-            </th>
-          </tr>
-        </thead>
+      <div className="w-full overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b border-[#D1D5DB]">
+            <tr>
+              <th className="px-2 py-2 lg:px-6 lg:py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
+                Report Name
+              </th>
+              <th className="px-2 py-2 lg:px-6 lg:py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
+                Created Date
+              </th>
+              <th className="px-2 py-2 lg:px-6 lg:py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
+                Actions
+              </th>
+            </tr>
+          </thead>
         <tbody className="bg-white divide-y divide-[#D1D5DB]">
           {reports.length === 0 ? (
             <tr>
-              <td colSpan={3} className="px-6 py-4 text-center text-sm text-[#374151]">
+              <td colSpan={3} className="px-2 py-3 lg:px-6 lg:py-4 text-center text-xs lg:text-sm text-[#374151]">
                 No reports found
               </td>
             </tr>
@@ -77,7 +78,8 @@ export function ReportsTable({ reports }: ReportsTableProps) {
             })
           )}
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
   );
 }

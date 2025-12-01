@@ -15,8 +15,8 @@ export default function IndividualArcadeTab({ data }: IndividualArcadeTabProps) 
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5">
-      <h2 className="text-2xl font-semibold text-[#0A0A0A] mb-6">
+    <div className="bg-white rounded-xl border border-gray-200 p-4 lg:p-5">
+      <h2 className="text-xl lg:text-2xl font-semibold text-[#0A0A0A] mb-4 lg:mb-6">
         Individual Arcade Performance
       </h2>
       <div className="space-y-3">
@@ -26,18 +26,18 @@ export default function IndividualArcadeTab({ data }: IndividualArcadeTabProps) 
             return (
               <div
                 key={`${performer.name}-${rank}`}
-                className={`flex items-center justify-between px-4 py-3 rounded-lg ${getPillStyle(
+                className={`flex items-center justify-between px-3 lg:px-4 py-3 rounded-lg ${getPillStyle(
                   rank
                 )}`}
               >
-                <span className="text-sm font-medium uppercase tracking-wide">
+                <span className="text-xs lg:text-sm font-medium uppercase tracking-wide truncate">
                   {performer.name} {performer.total} CARDS{performer.locationCode ? ` – ${performer.locationCode}` : ''}
                 </span>
               </div>
             );
           })
         ) : (
-          <p className="text-sm text-[#6B7280]">No data available</p>
+          <p className="text-xs lg:text-sm text-[#6B7280]">No data available</p>
         )}
       </div>
     </div>
