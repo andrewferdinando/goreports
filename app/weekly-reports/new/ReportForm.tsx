@@ -52,7 +52,7 @@ export function ReportForm() {
     <form onSubmit={handleSubmit} className="space-y-6" encType="multipart/form-data">
       <div>
         <label className="block text-sm font-medium text-[#374151] mb-1">
-          Week start
+          Week starting
         </label>
         <input
           type="date"

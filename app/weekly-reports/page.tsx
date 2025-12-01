@@ -1,28 +1,12 @@
-"use client";
-
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { format } from 'date-fns';
 import PageHeader from "@/components/PageHeader";
 import PrimaryButton from "@/components/ui/PrimaryButton";
+import { getWeeklyReports } from "@/lib/server/reports/getWeeklyReports";
+import { ReportRow } from "./ReportRow";
 
-interface Report {
-  id: number;
-  name: string;
-  createdDate: string;
-  createdBy: string;
-}
-
-const dummyReports: Report[] = [
-  {
-    id: 1,
-    name: "w/c 23 November 2025",
-    createdDate: "01/12/2025",
-    createdBy: "Mickey",
-  },
-];
-
-export default function WeeklyReportsPage() {
-  const router = useRouter();
+export default async function WeeklyReportsPage() {
+  const reports = await getWeeklyReports();
 
   return (
     <div>
@@ -46,29 +30,42 @@ export default function WeeklyReportsPage() {
               <th className="px-6 py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
                 Created Date
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-[#6B7280] uppercase tracking-wider">
-                Created By
-              </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-[#D1D5DB]">
-            {dummyReports.map((report) => (
-              <tr
-                key={report.id}
-                onClick={() => router.push(`/weekly-reports/${report.id}`)}
-                className="hover:bg-gray-50 hover:shadow-md cursor-pointer transition-all"
-              >
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[#0A0A0A]">
-                  {report.name}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-[#374151]">
-                  {report.createdDate}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-[#374151]">
-                  {report.createdBy}
+            {reports.length === 0 ? (
+              <tr>
+                <td colSpan={2} className="px-6 py-4 text-center text-sm text-[#374151]">
+                  No reports found
                 </td>
               </tr>
-            ))}
+            ) : (
+              reports.map((report) => {
+                // Format report name: use period_start if available, otherwise fallback to label or '-'
+                let reportName: string;
+                if (report.period_start) {
+                  reportName = `w/c ${format(new Date(report.period_start), 'd MMMM yyyy')}`;
+                } else if (report.label) {
+                  reportName = report.label;
+                } else {
+                  reportName = '-';
+                }
+
+                // Format created date
+                const createdDate = report.created_at
+                  ? format(new Date(report.created_at), 'dd/MM/yyyy')
+                  : '-';
+
+                return (
+                  <ReportRow
+                    key={report.id}
+                    reportId={report.id}
+                    reportName={reportName}
+                    createdDate={createdDate}
+                  />
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
