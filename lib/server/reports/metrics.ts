@@ -128,82 +128,40 @@ export async function getArcadeSales(reportId: string): Promise<ArcadeSalesData[
 // ============================================================================
 // Individual Arcade Tab
 // ============================================================================
-// Includes: category = 'combo' AND arcade_group_label IS NOT NULL
-// Groups by: location_id and arcade_group_label, summing value
-// Each arcade_group_label is treated as an "individual" performer
+// Query staff_metrics with category = 'arcade'
+// Aggregate values by staff_name
 
 export async function getIndividualArcade(reportId: string): Promise<IndividualArcadeData[]> {
   const supabase = getSupabaseServerClient();
 
-  const { data: metricData, error: metricError } = await supabase
-    .from('metric_values')
-    .select('location_id, arcade_group_label, value')
+  const { data, error } = await supabase
+    .from('staff_metrics')
+    .select('staff_name, value')
     .eq('report_id', reportId)
-    .eq('category', 'combo')
-    .not('arcade_group_label', 'is', null);
+    .eq('category', 'arcade');
 
-  if (metricError) {
-    throw new Error(`Failed to fetch metric values: ${metricError.message}`);
+  if (error) {
+    throw new Error(`Failed to fetch staff metrics: ${error.message}`);
   }
 
-  if (!metricData || metricData.length === 0) {
+  if (!data || data.length === 0) {
     return [];
   }
 
-  // Get unique location IDs
-  const locationIds = [...new Set(metricData.map((m) => m.location_id as string).filter(Boolean))];
+  // Aggregate values by staff_name
+  const totals = data.reduce((acc, row) => {
+    const staffName = row.staff_name as string;
+    const value = (row.value as number) || 0;
+    acc[staffName] = (acc[staffName] || 0) + value;
+    return acc;
+  }, {} as Record<string, number>);
 
-  if (locationIds.length === 0) {
-    return [];
-  }
-
-  // Fetch locations
-  const { data: locations, error: locationsError } = await supabase
-    .from('locations')
-    .select('id, code')
-    .in('id', locationIds);
-
-  if (locationsError) {
-    throw new Error(`Failed to fetch locations: ${locationsError.message}`);
-  }
-
-  // Create location map
-  const locationMap = new Map<string, string>();
-  for (const location of locations || []) {
-    locationMap.set(location.id as string, location.code as string);
-  }
-
-  // Group by arcade_group_label (summing across all locations)
-  // Each arcade_group_label becomes an "individual" entry
-  const grouped = new Map<string, number>();
-  for (const row of metricData) {
-    const arcadeLabel = row.arcade_group_label as string;
-    if (!arcadeLabel) continue;
-
-    const qty = (row.value as number) || 0;
-    grouped.set(arcadeLabel, (grouped.get(arcadeLabel) || 0) + qty);
-  }
-
-  // For location code, we'll use the location with the highest value for that arcade group
-  // This is a simplification since the component expects a single locationCode
-  const locationByLabel = new Map<string, string>();
-  for (const row of metricData) {
-    const locationId = row.location_id as string;
-    const arcadeLabel = row.arcade_group_label as string;
-    if (!locationId || !arcadeLabel) continue;
-
-    const locationCode = locationMap.get(locationId) || 'Unknown';
-    // Use the first location we encounter for each label (or could track max)
-    if (!locationByLabel.has(arcadeLabel)) {
-      locationByLabel.set(arcadeLabel, locationCode);
-    }
-  }
-
-  return Array.from(grouped.entries())
-    .map(([label, total]) => ({ 
-      name: label, // Arcade group label as the "name" (e.g., "Spend $30")
-      total, 
-      locationCode: locationByLabel.get(label) 
+  // Convert to array format and sort by total descending
+  return Object.entries(totals)
+    .map(([name, total]) => ({
+      name,
+      total,
+      locationCode: undefined, // Not needed for Individual Arcade tab
     }))
     .sort((a, b) => b.total - a.total);
 }
