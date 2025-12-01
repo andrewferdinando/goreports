@@ -10,15 +10,19 @@ export async function createMonthlyReport(formData: FormData) {
   // 1. Make sure locations exist
   const locations = await ensureBaseLocations();
 
-  // 2. Read and validate month start date
+  // 2. Read and validate month (format: YYYY-MM from month input)
   const periodStartRaw = String(formData.get('period_start') || '').trim();
   if (!periodStartRaw) {
-    throw new Error('Month start is required');
+    throw new Error('Month is required');
   }
 
-  // 3. Calculate month end date (last day of the month)
-  const start = new Date(periodStartRaw);
-  const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+  // 3. Parse month input (YYYY-MM) and set to first day of month
+  const [year, month] = periodStartRaw.split('-').map(Number);
+  const start = new Date(year, month - 1, 1); // month is 0-indexed in Date
+  const periodStart = start.toISOString().split('T')[0];
+
+  // 4. Calculate month end date (last day of the month)
+  const end = new Date(year, month, 0); // day 0 = last day of previous month
   const period_end = end.toISOString().split('T')[0];
 
   // 5. Auto-generate report label (e.g. "November 2025")
