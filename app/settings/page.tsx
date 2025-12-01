@@ -19,7 +19,7 @@ export default function SettingsPage() {
           <div>
             <h2 className="text-lg font-semibold text-[#0A0A0A] mb-2">Product Rules</h2>
             <p className="text-sm text-[#374151]">
-              Tell the app how to categorise new products (combo, non combo, arcade, other).
+              Tell the app how to categorise new products.
             </p>
           </div>
           <Link href="/settings/product-rules">
