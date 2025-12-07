@@ -48,6 +48,51 @@ Each report detail page (`/weekly-reports/[id]` or `/monthly-reports/[id]`) disp
 
 All tabs fetch data from the same underlying `metric_values` and `staff_metrics` tables, but aggregate and present it differently. The UI uses React components with Recharts for visualizations and responsive Tailwind CSS for mobile-friendly layouts.
 
+## Weekly Report Data Flow
+
+The following diagram illustrates the complete data flow for weekly reports, from user creation through CSV parsing to final report display:
+
+```mermaid
+flowchart TD
+  U[User] --> WF[Weekly Reports - Create form]
+
+  WF --> R[reports row<br/>type = 'weekly'<br/>period_start, period_end]
+
+  WF --> RU[report_uploads rows<br/>(one per location)]
+
+  RU --> ST[Supabase Storage<br/>(weekly CSV files)]
+
+  R --> PRC[parseReportCsvs(report_id)]
+
+  ST --> PRC
+
+  PRC --> PR[product_rules<br/>matched by location + product_name]
+
+  PRC --> MV[metric_values<br/>(report_id, location_id,<br/>product_name, category, arcade_group_label,<br/>user_name, value)]
+
+  PRC --> SM[staff_metrics<br/>(report_id, location_id,<br/>staff_name, category, value)]
+
+  PRC --> UP[unmatched_products<br/>(rows that don't match any product_rule)]
+
+  MV --> WA[Weekly report UI - Arcade Sales]
+
+  SM --> WIA[Weekly report UI - Individual Arcade]
+
+  MV --> WC[Weekly report UI - Combo Sales]
+
+  MV --> WIS[Weekly report UI - Individual Sales<br/>(uses combo + non_combo, filtered by staff_report_filters)]
+
+  SM --> WIS
+```
+
+This flow shows how:
+1. Users create a weekly report via the form, which creates a `reports` row and `report_uploads` rows
+2. CSV files are stored in Supabase Storage
+3. The `parseReportCsvs` function reads from storage and matches products against `product_rules`
+4. Parsed data is stored in `metric_values` (location-level) and `staff_metrics` (staff-level)
+5. Unmatched products are tracked separately for review
+6. The four report UI tabs query and aggregate this data for display
+
 ## Report Types
 
 ### 1. Arcade Sales
