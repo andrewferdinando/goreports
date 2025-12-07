@@ -15,6 +15,39 @@ The application follows a straightforward data pipeline:
 3. **Parse**: A server-side parsing function (`parseReportCsvs`) processes each CSV, categorizing products using `product_rules`, and populates `metric_values` (location-level) and `staff_metrics` (staff-level) tables
 4. **Report**: The parsed data is aggregated and displayed in four report types, with optional filtering via `staff_report_filters` for individual reports
 
+## Core Processes
+
+### Weekly Reports
+The weekly report workflow allows users to create reports for a specific week. Users select a "week starting" date (typically a Monday), and the system automatically calculates the week end date (6 days later). The report is labeled as "w/c [date]" (week commencing) and stored with `type = 'weekly'`. Users can then upload CSV files for each venue, which are parsed and aggregated into the four report types. Weekly reports are listed on `/weekly-reports` and filtered by `type = 'weekly'` in the database.
+
+### Monthly Reports
+Monthly reports follow the same workflow as weekly reports but are designed for monthly data aggregation. Users select a month, and the system creates a report with `type = 'monthly'` and a label like "November 2025". The CSV parsing and reporting logic is identical to weekly reports—the only difference is the time period and how reports are filtered in the UI. Monthly reports are listed on `/monthly-reports` and filtered by `type = 'monthly'` in the database.
+
+### CSV Upload & Storage
+When creating a report, users upload CSV files for each of the three venues (Auckland, Christchurch, Queenstown). The files are uploaded to Supabase Storage in the `report-csvs` bucket, with paths structured as `{reportId}/{locationCode}-{timestamp}.csv`. Metadata about each upload is stored in the `report_uploads` table, linking the file to the report and location. Files are stored permanently and can be viewed/downloaded later via the "View Uploads" feature on report detail pages.
+
+### CSV Parsing & Categorisation
+The `parseReportCsvs` function processes uploaded CSV files server-side. It downloads each CSV from Supabase Storage, parses the rows using PapaParse, and identifies product rows, staff header rows, and section boundaries. For each product row, it matches the product name against `product_rules` (using exact or contains matching) to determine the category (combo, non_combo, arcade, or other). Products are then inserted into both `metric_values` (location-level aggregates) and `staff_metrics` (staff-level data). The parser handles complex CSV structures with staff sections, product headers, and "Volume In-Store" quantity columns.
+
+### Staff Metrics (Individual Arcade & Individual Sales)
+Staff metrics are calculated from the `staff_metrics` table, which stores individual staff member sales data per product per location. For **Individual Arcade**, the system aggregates `staff_metrics` where `category = 'arcade'`, summing the total cards sold per staff member. For **Individual Sales**, it aggregates `staff_metrics` where `category IN ('combo', 'non_combo')`, calculating combo rates (combo sales / total sales) per staff member. Both reports respect the `staff_report_filters` table—staff members with `include_in_individual_reports = false` are excluded from these views but their data still counts in venue-level aggregates.
+
+### Product Rules (Settings)
+Product rules are configurable patterns stored in the `product_rules` table that determine how products are categorized during CSV parsing. Each rule specifies a `product_pattern` (text to match), `match_type` (exact or contains), `category` (combo, non_combo, arcade, other), and optionally an `arcade_group_label` for grouping arcade products. Rules can be venue-specific (via `location_id`) and can be activated/deactivated. When parsing CSVs, the system matches product names against active rules to automatically categorize new products. Rules are managed via Settings → Product Rules, where users can add, edit, and filter rules by venue.
+
+### User Filters (Settings → Users)
+The user filter system allows administrators to control which staff members appear in Individual Arcade and Individual Sales reports. The `staff_report_filters` table stores per-staff visibility preferences. When a staff member is unchecked (`include_in_individual_reports = false`), they are excluded from the two individual reports but their sales data continues to be counted in all venue-level metrics and totals. This is a UI-only filter—the underlying `staff_metrics` data remains unchanged. Filters are managed via Settings → Users, which lists all staff names from `staff_metrics` with checkboxes to toggle visibility.
+
+### Mini Reports UI (4 tabs on Weekly/Monthly report page)
+Each report detail page (`/weekly-reports/[id]` or `/monthly-reports/[id]`) displays four tabs of analytical data:
+
+1. **Arcade Sales Tab**: Bar chart showing arcade product sales by venue, grouped by `arcade_group_label`
+2. **Individual Arcade Tab**: Ranked list of staff members by total arcade card sales
+3. **Combo Sales Tab**: Cards showing combo vs non-combo performance per venue, with combo percentages and rankings
+4. **Individual Sales Tab**: Performance pills showing each staff member's combo rate, combo sales, and total sales
+
+All tabs fetch data from the same underlying `metric_values` and `staff_metrics` tables, but aggregate and present it differently. The UI uses React components with Recharts for visualizations and responsive Tailwind CSS for mobile-friendly layouts.
+
 ## Report Types
 
 ### 1. Arcade Sales
