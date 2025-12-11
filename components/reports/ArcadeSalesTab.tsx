@@ -21,14 +21,49 @@ interface ArcadeSalesTabProps {
 }
 
 export default function ArcadeSalesTab({ data }: ArcadeSalesTabProps) {
+  // Define the desired order for x-axis categories
+  // "Spend $100" should appear last, after all other categories
+  const categoryOrder = [
+    "$10 Card",
+    "$20 Card",
+    "Spend $30",
+    "Spend $50",
+    "Spend $70",
+    "Spend $100", // Should be last
+  ];
+
   // Transform data for grouped bar chart
   // X-axis: product labels, Y-axis: values, grouped by venue
-  const chartData = data.map((item) => ({
-    product: item.product,
-    Auckland: item.auckland,
-    Christchurch: item.christchurch,
-    Queenstown: item.queenstown,
-  }));
+  const chartData = data
+    .map((item) => ({
+      product: item.product,
+      Auckland: item.auckland,
+      Christchurch: item.christchurch,
+      Queenstown: item.queenstown,
+    }))
+    .sort((a, b) => {
+      // Get index in predefined order, or use a large number if not found
+      const indexA = categoryOrder.indexOf(a.product);
+      const indexB = categoryOrder.indexOf(b.product);
+      
+      // If both are in the order, sort by their position
+      if (indexA !== -1 && indexB !== -1) {
+        return indexA - indexB;
+      }
+      
+      // If only A is in the order, A comes first
+      if (indexA !== -1) {
+        return -1;
+      }
+      
+      // If only B is in the order, B comes first
+      if (indexB !== -1) {
+        return 1;
+      }
+      
+      // If neither is in the order, maintain original order (or sort alphabetically)
+      return a.product.localeCompare(b.product);
+    });
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 lg:p-5">
